@@ -28,6 +28,7 @@ for (let s = 0; s < slots; s += stride) {
 }
 
 const jobFile = fileURLToPath(new URL('./batch-stats-job.mts', import.meta.url));
+// Windows fix: the job file self-registers tsx ESM hooks (see batch-stats-job.mts).
 const results = await Promise.all(chunks.map(chunk => new Promise<any>((resolve, reject) => {
   const w = new Worker(jobFile, { workerData: { items: chunk, gender } });
   w.on('message', resolve);
