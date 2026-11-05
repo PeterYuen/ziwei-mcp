@@ -1173,14 +1173,16 @@ async function toolZiweiBatchStats(args: any): Promise<unknown> {
   const stride = Math.max(1, Math.ceil(slots / maxCharts));
 
   const HERE = dirnameOf(fileURLToPath(import.meta.url));
-  const tsx = joinPath(HERE, '../../vendor/ziwei-doushu/node_modules/.bin/tsx');
+  // Windows fix: spawn node + tsx CLI entry instead of the POSIX-only
+  // .bin/tsx shim (spawn of the extensionless shim → ENOENT on win32).
+  const tsx = joinPath(HERE, '../../vendor/ziwei-doushu/node_modules/tsx/dist/cli.mjs');
   const worker = joinPath(HERE, 'batch-stats-worker.mts');
   // DEEP FIX 2026-11-05: async spawn instead of execFileSync — the old
   // synchronous 120 s call blocked the whole event loop, so /health and every
   // concurrent request queued behind the batch. Same contract otherwise:
   // 120 s kill, stdout collected, worker threads stay inside the child.
   const agg: any = await new Promise((resolve, reject) => {
-    const child = spawn(tsx, [worker, JSON.stringify({
+    const child = spawn(process.execPath, [tsx, worker, JSON.stringify({
       y1, y2, gender, hours, startDayOffset: startOffset, dayCount, stride,
     })], { stdio: ['ignore', 'pipe', 'pipe'] });
     let raw = '';
