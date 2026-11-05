@@ -1,0 +1,10 @@
+Third-party attribution — ziwei-doushu engine
+
+This service wraps (does not redistribute) the Ziwei Doushu engine published at
+github.com/Renhuai123/ziwei-doushu — the engine source code is MIT licensed and
+its accompanying dataset is CC BY 4.0. Nothing from that project's source or
+dataset is copied into this repository. To run this service you must supply
+your own vendored copy of the engine, pinned to commit 495b79e, at the path
+documented in the README's Install section (engine directory read-only; this
+service only imports its modules). All rights in the engine remain with its
+upstream authors.

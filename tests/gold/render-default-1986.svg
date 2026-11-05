@@ -1,0 +1,127 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 600" width="600" height="600" font-family="Noto Serif TC, Songti TC, serif">
+  <rect width="600" height="600" fill="#fffdf8"/>
+  <g stroke="#9a8f7d" stroke-width="1" fill="none"><rect x="0" y="0" width="600" height="600"/>
+    <line x1="150" y1="0" x2="150" y2="600"/><line x1="300" y1="0" x2="300" y2="600"/><line x1="450" y1="0" x2="450" y2="600"/>
+    <line x1="0" y1="150" x2="600" y2="150"/><line x1="0" y1="300" x2="600" y2="300"/><line x1="0" y1="450" x2="600" y2="450"/>
+  </g>
+  <g>
+    <rect x="150" y="150" width="300" height="300" fill="#faf7ef"/>
+    <text x="300" y="185" text-anchor="middle" font-size="15" font-weight="bold" fill="#1a1714">命盤基本資料</text>
+    <text x="300" y="215" text-anchor="middle" font-size="12" fill="#3d3935">男 · 1986-12-08 23:45</text>
+    <text x="300" y="240" text-anchor="middle" font-size="12" fill="#3d3935">四柱：丙寅 庚子 丁亥 庚子</text>
+    <text x="300" y="262" text-anchor="middle" font-size="12" fill="#3d3935">農曆 1986-11-8 子時</text>
+    <text x="300" y="286" text-anchor="middle" font-size="12" fill="#3d3935">五行局：土五局</text>
+    <text x="300" y="310" text-anchor="middle" font-size="12" fill="#3d3935">命主 贪狼 · 身主 天梁</text>
+    <text x="300" y="334" text-anchor="middle" font-size="12" fill="#3d3935">紫微在巳</text>
+    <text x="300" y="368" text-anchor="middle" font-size="11" fill="#8a8279">生年四化 <tspan fill="#1a9850">禄→命宫</tspan> <tspan fill="#3066be">权→官禄</tspan> <tspan fill="#7b3296">科→夫妻</tspan> <tspan fill="#d7301f">忌→子女</tspan></text>
+  </g>
+  <g transform="translate(0,450)">
+    <rect width="150" height="150" fill="#ffffff"/>
+    <text x="8" y="20" font-size="14" font-weight="bold">福德</text>
+    <text x="142" y="20" text-anchor="end" font-size="11" fill="#8a8279">寅庚</text>
+    <text x="8" y="45" font-size="12">太阳（旺）</text>
+    <text x="8" y="63" font-size="12">巨门（庙）</text>
+    <text x="8" y="81" font-size="11" fill="#5a554f">左辅</text>
+    <text x="8" y="97" font-size="11" fill="#5a554f">天才</text>
+    <text x="8" y="113" font-size="11" fill="#5a554f">天寿</text>
+  </g>
+  <g transform="translate(0,300)">
+    <rect width="150" height="150" fill="#ffffff"/>
+    <text x="8" y="20" font-size="14" font-weight="bold">田宅</text>
+    <text x="142" y="20" text-anchor="end" font-size="11" fill="#8a8279">卯辛</text>
+    <text x="8" y="45" font-size="12">天相（陷）</text>
+    <text x="8" y="63" font-size="11" fill="#5a554f">咸池</text>
+  </g>
+  <g transform="translate(0,150)">
+    <rect width="150" height="150" fill="#ffffff"/>
+    <text x="8" y="20" font-size="14" font-weight="bold">官禄</text>
+    <text x="142" y="20" text-anchor="end" font-size="11" fill="#8a8279">辰壬</text>
+    <text x="8" y="45" font-size="12">天机（利） <tspan fill="#3066be">权</tspan></text>
+    <text x="8" y="63" font-size="12">天梁（庙）</text>
+    <text x="8" y="81" font-size="11" fill="#5a554f">文曲</text>
+    <text x="8" y="97" font-size="11" fill="#5a554f">恩光</text>
+  </g>
+  <g transform="translate(0,0)">
+    <rect width="150" height="150" fill="#ffffff"/>
+    <text x="8" y="20" font-size="14" font-weight="bold">仆役</text>
+    <text x="142" y="20" text-anchor="end" font-size="11" fill="#8a8279">巳癸</text>
+    <text x="8" y="45" font-size="12">紫微（旺）</text>
+    <text x="8" y="63" font-size="12">七杀（平）</text>
+    <text x="8" y="81" font-size="11" fill="#5a554f">禄存</text>
+    <text x="8" y="97" font-size="11" fill="#5a554f">八座</text>
+    <text x="8" y="113" font-size="11" fill="#5a554f">天官</text>
+  </g>
+  <g transform="translate(150,0)">
+    <rect width="150" height="150" fill="#ffffff"/>
+    <text x="8" y="20" font-size="14" font-weight="bold">迁移</text>
+    <text x="142" y="20" text-anchor="end" font-size="11" fill="#8a8279">午甲</text>
+    <text x="8" y="45" font-size="12">空宮（借天同、太阴）</text>
+    <text x="8" y="63" font-size="11" fill="#5a554f">解神</text>
+    <text x="8" y="79" font-size="11" fill="#5a554f">龙池</text>
+    <text x="8" y="95" font-size="11" fill="#5a554f">台辅</text>
+  </g>
+  <g transform="translate(300,0)">
+    <rect width="150" height="150" fill="#ffffff"/>
+    <text x="8" y="20" font-size="14" font-weight="bold">疾厄</text>
+    <text x="142" y="20" text-anchor="end" font-size="11" fill="#8a8279">未乙</text>
+    <text x="8" y="45" font-size="12">空宮（借武曲、贪狼）</text>
+    <text x="8" y="63" font-size="11" fill="#5a554f">天喜</text>
+    <text x="8" y="79" font-size="11" fill="#5a554f">月德</text>
+  </g>
+  <g transform="translate(450,0)">
+    <rect width="150" height="150" fill="#ffffff"/>
+    <text x="8" y="20" font-size="14" font-weight="bold">财帛</text>
+    <text x="142" y="20" text-anchor="end" font-size="11" fill="#8a8279">申丙</text>
+    <text x="8" y="45" font-size="12">空宮（借太阳、巨门）</text>
+    <text x="8" y="63" font-size="11" fill="#5a554f">天马</text>
+    <text x="8" y="79" font-size="11" fill="#5a554f">凤阁</text>
+    <text x="8" y="95" font-size="11" fill="#5a554f">年解</text>
+  </g>
+  <g transform="translate(450,150)">
+    <rect width="150" height="150" fill="#ffffff"/>
+    <text x="8" y="20" font-size="14" font-weight="bold">子女</text>
+    <text x="142" y="20" text-anchor="end" font-size="11" fill="#8a8279">酉丁</text>
+    <text x="8" y="45" font-size="12">廉贞（平） <tspan fill="#d7301f">忌</tspan></text>
+    <text x="8" y="63" font-size="12">破军（陷）</text>
+    <text x="8" y="81" font-size="11" fill="#5a554f">天钺</text>
+    <text x="8" y="97" font-size="11" fill="#5a554f">三台</text>
+    <text x="8" y="113" font-size="11" fill="#5a554f">破碎</text>
+  </g>
+  <g transform="translate(450,300)">
+    <rect width="150" height="150" fill="#ffffff"/>
+    <text x="8" y="20" font-size="14" font-weight="bold">夫妻</text>
+    <text x="142" y="20" text-anchor="end" font-size="11" fill="#8a8279">戌戊</text>
+    <text x="8" y="45" font-size="12">空宮（借天机、天梁）</text>
+    <text x="8" y="63" font-size="11" fill="#5a554f">文昌 <tspan fill="#7b3296">科</tspan></text>
+    <text x="8" y="79" font-size="11" fill="#5a554f">天贵</text>
+    <text x="8" y="95" font-size="11" fill="#5a554f">华盖</text>
+  </g>
+  <g transform="translate(450,450)">
+    <rect width="150" height="150" fill="#ffffff"/>
+    <text x="8" y="20" font-size="14" font-weight="bold">兄弟</text>
+    <text x="142" y="20" text-anchor="end" font-size="11" fill="#8a8279">亥己</text>
+    <text x="8" y="45" font-size="12">天府（得）</text>
+    <text x="8" y="63" font-size="11" fill="#5a554f">天魁</text>
+    <text x="8" y="79" font-size="11" fill="#5a554f">天姚</text>
+    <text x="8" y="95" font-size="11" fill="#5a554f">天德</text>
+  </g>
+  <g transform="translate(300,450)">
+    <rect width="150" height="150" fill="#fdf6e3" stroke="#c9a96e" stroke-width="3"/>
+    <text x="8" y="20" font-size="14" font-weight="bold" fill="#b8864a">命宫 ★</text>
+    <text x="142" y="20" text-anchor="end" font-size="11" fill="#8a8279">子庚</text>
+    <text x="8" y="45" font-size="12">天同（旺） <tspan fill="#1a9850">禄</tspan></text>
+    <text x="8" y="63" font-size="12">太阴（庙）</text>
+    <text x="8" y="81" font-size="11" fill="#5a554f">右弼</text>
+    <text x="8" y="97" font-size="11" fill="#5a554f">天福</text>
+    <text x="8" y="113" font-size="11" fill="#5a554f">天厨</text>
+    <text x="8" y="129" font-size="11" fill="#8a8279">命身同宮</text>
+  </g>
+  <g transform="translate(150,450)">
+    <rect width="150" height="150" fill="#ffffff"/>
+    <text x="8" y="20" font-size="14" font-weight="bold">父母</text>
+    <text x="142" y="20" text-anchor="end" font-size="11" fill="#8a8279">丑辛</text>
+    <text x="8" y="45" font-size="12">武曲（庙）</text>
+    <text x="8" y="63" font-size="12">贪狼（庙）</text>
+    <text x="8" y="81" font-size="11" fill="#5a554f">红鸾</text>
+  </g>
+</svg>

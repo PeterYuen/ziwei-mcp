@@ -1,0 +1,20 @@
+{
+  "$comment": "Snippet only — do NOT apply by editing gateway config from this file; the operator decides. Two shapes: stdio (local) and streamable-HTTP url (remote). For HTTP, replace <token> with the value read from services/ziwei-mcp/.token at wire time — do not commit real tokens. The url below points at 127.0.0.1 because the daemon binds 0.0.0.0; LAN hosts should substitute their own host address.",
+  "mcpServers": {
+    "ziwei-mcp": {
+      "command": "REPLACE_WITH_REPO_ROOT/vendor/ziwei-doushu/node_modules/.bin/tsx",
+      "args": [
+        "REPLACE_WITH_REPO_ROOT/services/ziwei-mcp/index.ts"
+      ],
+      "cwd": "REPLACE_WITH_REPO_ROOT/services/ziwei-mcp",
+      "transport": "stdio"
+    },
+    "ziwei-mcp-http": {
+      "url": "http://127.0.0.1:9878/mcp",
+      "headers": {
+        "Authorization": "***"
+      },
+      "transport": "streamable-http"
+    }
+  }
+}

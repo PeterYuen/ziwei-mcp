@@ -1,0 +1,8 @@
+# secrets — never commit
+.token
+*.token
+
+# runtime artifacts
+*.log
+.openclaw/
+node_modules/
