@@ -1,7 +1,17 @@
 /** ziwei-mcp — per-worker slice of ziwei_batch_stats (see batch-stats-worker.mts). */
 import { parentPort, workerData } from 'node:worker_threads';
-import { generateChart } from '../../vendor/ziwei-doushu/lib/ziwei/algorithm';
-import { getSiHuaByStem } from '../../vendor/ziwei-doushu/lib/ziwei/sihua';
+// Windows/cross-platform fix: register the tsx ESM hooks inside THIS worker
+// thread before loading the engine. Static engine imports would be resolved
+// before any hook registration (and --import in Worker execArgv does not
+// reliably propagate tsx on win32), so register explicitly + dynamic import.
+import { register } from '../../vendor/ziwei-doushu/node_modules/tsx/dist/esm/api/index.mjs';
+register();
+// CJS/ESM interop: when tsx compiles the engine as CJS (the engine package
+// has no "type":"module"), named exports live on the namespace's default.
+const algMod: any = await import('../../vendor/ziwei-doushu/lib/ziwei/algorithm');
+const sihuaMod: any = await import('../../vendor/ziwei-doushu/lib/ziwei/sihua');
+const { generateChart } = algMod.default ?? algMod;
+const { getSiHuaByStem } = sihuaMod.default ?? sihuaMod;
 
 const EPOCH = Date.UTC(1950, 0, 1);
 const { items, gender } = workerData as { items: [number, number][]; gender: 'male' | 'female' };
