@@ -1,5 +1,7 @@
 # ziwei-mcp — Ziwei Doushu MCP server (Phase 1 stdio + Phase 2 HTTP)
 
+> 🌐 **English** | [繁體中文](README.zh-CN.md)
+
 Deterministic [紫微斗数](https://en.wikipedia.org/wiki/Ziwei_doushu) chart + 四化-layer
 server over **two MCP transports**: stdio (Phase 1, local clients) and Streamable HTTP
 (Phase 2, `http.ts`, LAN/remote clients, bearer-token). Stateless (birth data supplied
