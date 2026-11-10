@@ -303,11 +303,17 @@ person's: `1986-12-08 23:45 male lon 114.2` → effective `1986-12-09`, pillars
 丙寅/庚子/丁亥/庚子, 命宮 子·天同(旺)（太陰同宮）, 土五局, 命主 貪狼,
 身主 天梁, 生年四化: 天同祿→命宮, 天機權→官禄, 文昌科→夫妻, 廉貞忌→子女.
 
+## Changelog
+
+Canonical dated changelog: **[CHANGES.md](CHANGES.md)** (keep-a-changelog
+format, newest first). The per-release notes below are the detailed narrative
+entries.
+
 ## Changelog — 2026-11-10 (patterns batch: `ziwei_patterns` tool + `leapMonth` param)
 
 **New tool `ziwei_patterns`** — dedicated 格局 detection + 命宮 summary, built on
 the engine's `detectPatterns` / `getMingGongSummary` (engine pin updated
-`906bd93` → `906bd93`, which adds the strict 《紫微斗数全书》卷一 tables and the
+`495b79e` → `906bd93`, which adds the strict 《紫微斗数全书》卷一 tables and the
 fixed 四化 bonus logic). `ziwei_chart`'s output shape is untouched (gold-chart
 output verified byte-identical before/after); the new tool exists so existing
 consumers never see a shape change.

@@ -294,6 +294,11 @@ bash services/ziwei-mcp/tests/http-tests.sh    # HTTP：auth、protocol、batch�
 丙寅/庚子/丁亥/庚子，命宮 子·天同(旺)（太陰同宮），土五局，命主 貪狼，
 身主 天梁，生年四化：天同祿→命宮，天機權→官禄，文昌科→夫妻，廉貞忌→子女。
 
+## 變更記錄
+
+正式日期式變更記錄見 **[CHANGES.md](CHANGES.md)**（Keep a Changelog 格式，最新在上）。
+以下逐段為各版本的詳細敘述性記錄。
+
 ## 變更記錄 —— 2026-11-10（格局批次：`ziwei_patterns` 工具 ＋ `leapMonth` 參數）
 
 **新工具 `ziwei_patterns`** —— 專用的格局辨識 ＋ 命宮摘要，基於引擎的
