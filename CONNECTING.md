@@ -1,10 +1,10 @@
 # ziwei-mcp — Connection Info (for testing in other systems)
 
 **Server:** ziwei-mcp · two transports:
-- **stdio** v0.1.0 (Phase 1) — local processes only
-- **Streamable HTTP** v0.2.0 (Phase 2) — LAN/remote via URL, bearer-token
+- **stdio** v0.3.0 (Phase 1) — local processes only
+- **Streamable HTTP** v0.3.0 (Phase 2) — LAN/remote via URL, bearer-token
 
-**Engine:** vendored ziwei-doushu @ `495b79e` (MIT, upstream github.com/Renhuai123/ziwei-doushu)
+**Engine:** vendored ziwei-doushu @ `906bd93` (engine @ upstream 21114e3 + true-solar longitude fix) (MIT, upstream github.com/Renhuai123/ziwei-doushu)
 Both transports share one implementation module (`tools.ts`) — identical tool behaviour.
 
 ## Phase 2: HTTP (remote systems — this is what you want for cross-host testing)
@@ -12,7 +12,7 @@ Both transports share one implementation module (`tools.ts`) — identical tool 
 **URL:** `http://<host>:9878/mcp` (the daemon binds 0.0.0.0 — remote clients use the host's own LAN address)
 **Token:** read `services/ziwei-mcp/.token` on the server host (chmod 600) — send it as
 `Authorization: Bearer <token>` or `?token=<token>` (either accepted). Missing/wrong → 401.
-**Health:** `GET /health` (no auth) → `{"status":"ok","server":"ziwei-mcp","version":"0.2.0"}`
+**Health:** `GET /health` (no auth) → `{"status":"ok","server":"ziwei-mcp","version":"0.3.0"}`
 **Service:** `systemctl --user {start,restart,status} ziwei-mcp` (enabled at boot, Linger=yes)
 
 ### Remote client config (streamable HTTP — most MCP clients accept `url`)
@@ -44,7 +44,7 @@ curl -s -X POST http://127.0.0.1:9878/mcp \
   -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"probe","version":"1"}}}'
 ```
 
-Expected: `serverInfo` `ziwei-mcp/0.2.0`, then `tools/list` returns all nine tools.
+Expected: `serverInfo` `ziwei-mcp/0.3.0`, then `tools/list` returns all ten tools.
 
 ### HTTP protocol details
 
@@ -116,7 +116,7 @@ stateless, deterministic, zero-LLM. Example calls below use the gold birth
 (synthetic anchor 1986-12-08 23:45 male lon 114.2).
 
 ### `ziwei_chart`
-Full natal chart. Required: `year, month, day, hour, minute, gender` (`male|female`). Optional: `longitude` (enables true-solar-time correction; `hour` is clock hour 0–23, 23 = late-子 → chart day advances), `latitude` (accepted, inert). Returns `{meta, chart}` — palaces, stars with brightness, birth siHua, daXians, fourPillars, effectiveDate, trueSolarTime.
+Full natal chart. Required: `year, month, day, hour, minute, gender` (`male|female`). Optional: `longitude` (enables true-solar-time correction; `hour` is clock hour 0–23, 23 = late-子 → chart day advances), `latitude` (accepted, inert), `leapMonth` (2026-11-10: 闰月 policy `split` (default) | `next-month` | `prev-month` | `origin-month`; invalid values rejected with a clear error). Returns `{meta, chart}` — palaces, stars with brightness, birth siHua, daXians, fourPillars, effectiveDate, trueSolarTime.
 
 > **Integrator note (2026-11-04):** `chart.birthInfo` reflects the **engine-corrected
 > effective input** (e.g. the late-子 gold birth shows `day:9, hour:0` from raw
@@ -127,6 +127,31 @@ Full natal chart. Required: `year, month, day, hour, minute, gender` (`male|fema
 > hour: clock 12:00 → 6 (午), 12:10 → 6 (午), 23:10 → 0 (late-子, next day). Clock
 > values live only in `meta.rawInput` (and `meta.effectiveDate`/`trueSolarTime`).
 > Never index a branch table with `birthInfo.hour` expecting a 0–23 clock value.
+
+### `ziwei_patterns` (new 2026-11-10)
+Pattern (格局) detection + 命宮 summary over the internally-generated natal chart.
+Same birth params as `ziwei_chart` (incl. `longitude` true-solar correction and the
+optional `leapMonth` policy). Returns `{meta, mingGong, patterns, counts,
+strictModeNote}`:
+
+- `patterns[]` — `{name, level, description, palaces, strict, source?, conditions?}`.
+  `strict:true` = judged by the 《紫微斗数全书》卷一 tables (定贵局 27 / 定富局 6 /
+  定贫贱局 8) with the original-book item number in `source` and the 原书注文 as
+  `description`; `strict:false` = one of the 41 general detectors, with layered
+  `conditions.required/bonus/breaking` (四化 bonus lines evaluated via the engine's
+  `palaceHasSiHua`/`sanFangHasSiHua`).
+- `mingGong` — `{branch, mainStars, nature, keywords}`; empty 命宮 additionally
+  gets `borrowedFrom:{palace, mainStars}` (空宫借星 from the opposite palace).
+- `counts` — `{total, strict, loose}`.
+
+Gold-birth example (fires 4 loose detectors, zero strict — 天同太阴 in 子 matches
+none of the 49 table entries):
+```json
+{"year":1986,"month":12,"day":8,"hour":23,"minute":45,"gender":"male","longitude":114.2}
+```
+→ patterns: 机月同梁(excellent), 巨日同宫(good), 天同化禄入命(good), 化权入官(good).
+Strict-table example: `{"year":1990,"month":5,"day":20,"hour":8,"minute":0,"gender":"female"}`
+→ adds 坐贵向贵 (strict, 定贵局第9条) and reports `mingGong.borrowedFrom` (命宮 empty in 丑).
 
 ### `ziwei_sihua_layers`
 Time-layer analysis. Required: `year` (target year) **or** `yearWindow` (ganzhi pair, see below), `gender`, `birth{year,month,day,hour,minute[,longitude]}`, `layers` (any of `daxian|liunian|liuyue|liuri|liushi`). For liuyue give `lunarMonth` (direct), `month` (solar, converted internally), or `flowDate` (resolved by day — see straddle note below). For liuri/liushi give `flowDate{year,month,day}` (+ `flowHour` for liushi). Returns per-layer stem + transforms keyed 禄/权/科/忌 with `{star, palace}`, plus daxian ageRanges/currentLayerIndex. **Caveat:** below-month (day/hour) planning is unsupported by birth-time precision — liuri/liushi are informational only.
@@ -195,7 +220,7 @@ Bidirectional calendar conversion with four-pillars for the result. Give exactly
 ```
 
 ### `ziwei_selftest`
-No required args. Runs the built-in gold-standard regression internally (the synthetic-anchor case above: effectiveDate 1986-12-09, fourPillars 丙寅/庚子/丁亥/庚子, 命宮 子·天同(旺), 土五局, 命主/身主 貪狼/天梁, true solar 23:29:34) and returns `{pass, checks:[{name,expected,actual,ok}]}`. Deterministic, no external calls.
+No required args. Runs the built-in gold-standard regression internally (the synthetic-anchor case above: effectiveDate 1986-12-09, fourPillars 丙寅/庚子/丁亥/庚子, 命宮 子·天同(旺), 土五局, 命主/身主 貪狼/天梁, true solar 23:29:34, plus liuyue lichun-boundary stems and — since 2026-11-10 — pattern anchors: the gold chart's detected-pattern list, a 四化-bonus negative control, and two strict 《全书》卷一 fixtures (1978-07-01 11:00 male → 七杀朝斗 + 杀破狼 bonus; 1990-05-20 08:00 female → 坐贵向贵)) and returns `{pass, checks:[{name,expected,actual,ok}]}` (17 checks). Deterministic, no external calls.
 ```json
 {}
 ```
@@ -262,7 +287,7 @@ printf '%s\n' \
      <repo-root>/services/ziwei-mcp/index.ts
 ```
 
-Expected: line 1 = initialize result (serverInfo `ziwei-mcp/0.1.0`), line 3 = both tools with schemas.
+Expected: line 1 = initialize result (serverInfo `ziwei-mcp/0.3.0`), line 3 = both tools with schemas.
 
 ## Gold-standard assertion (use this to verify your client wired correctly — same on both transports)
 

@@ -15,11 +15,13 @@ HTTP（Phase 2，`http.ts`，LAN／遠端客戶端，bearer token）。無狀態
   由兩個進入點**原封不動（VERBATIM）**匯入（單一事實來源；無分叉邏輯）。
 - `index.ts` — Phase 1 進入點：stdin/stdout 上以換行分隔的 JSON-RPC 2.0
   （僅用 stdlib，**不需要 npm install**）；是 `tools.ts` 之上的輕量接線。
-- 引擎（唯讀，鎖定 `495b79e`）：`../../vendor/ziwei-doushu/lib/ziwei/`
+- 引擎（唯讀，鎖定 `906bd93`）：`../../vendor/ziwei-doushu/lib/ziwei/`
   （`algorithm.generateChart`、`sihua.*`、`true-solar-time.*`）。絕不修改。
-- 真太陽時修正於 `tools.ts` 內套用：vendored 的 `generateChart` 會忽略
-  `birthInfo.longitude`，因此該修正（經度 + 均時差 → 時辰地支 + 日偏移，
-  `next-day` 晚子規則）會在呼叫引擎**之前**套用。
+- 真太陽時修正於 `tools.ts` 內套用：引擎的 `generateChart`（≥ 906bd93）僅在
+  同時提供 `origInput` 鐘錶時間區塊時才會消費 `birthInfo.longitude`，本服務
+  並不發送該區塊；因此該修正（經度 + 均時差 → 時辰地支 + 日偏移，
+  `next-day` 晚子規則）在呼叫引擎**之前**套用 —— 與 `scripts/ziwei-chart.ts`
+  完全相同的單一修正路徑，輸出位元組相同。
 - `http.ts` — Phase 2 進入點：以 `node:http` 實作 MCP **Streamable HTTP**
   純 JSON 回應模式的 daemon（見下文 HTTP 章節）。綁定 `0.0.0.0:9878`，
   每個 `/mcp` 請求都必須附 bearer token。
@@ -41,7 +43,7 @@ HTTP（Phase 2，`http.ts`，LAN／遠端客戶端，bearer token）。無狀態
 - **Node.js ≥ 20**（僅用 stdlib —— 本服務無需 npm install）。
 - **引擎依賴：** 需要一份 vendored 的紫微斗數引擎副本，鎖定至
   [github.com/Renhuai123/ziwei-doushu](https://github.com/Renhuai123/ziwei-doushu)
-  的 commit `495b79e`（MIT；資料集為 CC BY 4.0 —— 見 `NOTICE`）。引擎**不會**
+  的 commit `906bd93`（MIT；資料集為 CC BY 4.0 —— 見 `NOTICE`）。引擎**不會**
   隨本 repository 一併散布；請將你自己的 checkout 放在
   `<repo-root>/vendor/ziwei-doushu/`（目錄唯讀），並在該目錄內完成
   `node_modules` 安裝。執行本服務所用的 `tsx` binary 即來自該 vendored
@@ -49,7 +51,7 @@ HTTP（Phase 2，`http.ts`，LAN／遠端客戶端，bearer token）。無狀態
 
 ```bash
 git clone https://github.com/Renhuai123/ziwei-doushu vendor/ziwei-doushu
-( cd vendor/ziwei-doushu && git checkout 495b79e && npm install )
+( cd vendor/ziwei-doushu && git checkout 906bd93 && npm install )
 ```
 
 本服務隨後匯入 `vendor/ziwei-doushu/lib/ziwei/*`（algorithm、sihua、
@@ -88,7 +90,7 @@ bash services/ziwei-mcp/tests/http-tests.sh   # 對線上 daemon 的 38 項斷�
   （取 ≥ 9878 的下一個空埠）並在 log 中記錄實際 port。
 - **Auth：** `Authorization: Bearer *** services/ziwei-mcp/.token)` 或 `?token=***<t>`
   query param（兩者皆可，常數時間比對）。缺少／錯誤 → **401**。
-- **`GET /health`** — 無需 auth、不含命盤資料：`{"status":"ok","server":"ziwei-mcp","version":"0.2.0"}`。
+- **`GET /health`** — 無需 auth、不含命盤資料：`{"status":"ok","server":"ziwei-mcp","version":"0.3.0"}`。
 - **Transport 模式（Streamable HTTP 規範）：**
   - **JSON 回應模式**（預設）：POST 單一 JSON-RPC 訊息或批次陣列，
     取回 `application/json`（僅通知的 POST 回 202）。
@@ -125,11 +127,12 @@ streamable HTTP；請代換 `<host>` 並從 `.token` 讀取 token）：
 }
 ```
 
-## 工具（9 個 —— 全工具批次 2026-11-03）
+## 工具（10 個 —— 格局批次 2026-11-10）
 
 | 工具 | 一句話說明 |
 |---|---|
 | `ziwei_chart` | 由國曆出生資料產生完整本命盤 JSON（提供 `longitude` 時套用真太陽時修正） |
+| `ziwei_patterns` | 2026-11-10 新增：格局辨識 ＋ 命宮摘要 —— 41 個通用識別器 ＋《紫微斗數全書》卷一嚴格格表（定貴／定富／定貧賤，帶原書條目號），`patterns[].strict` 區分兩族 |
 | `ziwei_sihua_layers` | 四化層級：大限／流年／流月 ＋ 流日／流時（日與時：僅供參考） |
 | `ziwei_from_city` | 以城市名稱（中文或常見英文名）排盤，經 vendored `cities.ts` 解析；明確提供 `longitude` 時以其為準 |
 | `ziwei_solar_lunar` | 雙向國曆⇄農曆轉換 ＋ 結果之四柱（1900–2050） |
@@ -142,6 +145,8 @@ streamable HTTP；請代換 `<host>` 並從 `.token` 讀取 token）：
 呼叫範例（一律透過 `tools/call` 的 params.arguments）：
 
 ```jsonc
+// ziwei_patterns —— 出生參數同 ziwei_chart；可選 leapMonth 閏月約定
+{"year":1986,"month":12,"day":8,"hour":23,"minute":45,"gender":"male","longitude":114.2}
 // ziwei_from_city —— 「Hong Kong」等同經度 114.2
 {"year":1986,"month":12,"day":8,"hour":23,"minute":45,"gender":"male","city":"Hong Kong"}
 // ziwei_solar_lunar —— 只能提供其中一端
@@ -174,6 +179,7 @@ streamable HTTP；請代換 `<host>` 並從 `.token` 讀取 token）：
 | `gender` | `"male"`\|`"female"` | |
 | `longitude` | number? | 東經度數；啟用真太陽時修正 |
 | `latitude` | number? | 可接受但不生效（修正僅使用經度 + 均時差） |
+| `leapMonth` | `"split"`\|`"next-month"`\|`"prev-month"`\|`"origin-month"`? | 2026-11-10：闰月歸屬約定（預設 `split` = 月中分界，主流口徑；`next-month` = 倪師派；無效值會被明確錯誤拒絕）。省略時維持引擎預設 —— 輸出與 2026-11-10 之前的呼叫位元組完全相同 |
 
 結果：`{ meta: {effectiveDate, hourBranch, trueSolarTime, fourPillars, rawInput, ...}, chart: <完整 ZiweiChart> }`。
 未提供 `longitude` 時修正不生效（同一命盤；`meta.trueSolarTime:null`）。
@@ -181,9 +187,36 @@ streamable HTTP；請代換 `<host>` 並從 `.token` 讀取 token）：
 > **`birthInfo` vs `meta.rawInput`（2026-11-04）：** `chart.birthInfo` 反映的是
 > **引擎修正後的有效輸入**（例如 23:00 的晚子出生會顯示 `day+1`、`hour:0`）。
 > 若要回顯呼叫端的**原始**數值，請讀 `meta.rawInput`
-> （`{year,month,day,hour,minute,gender[,longitude][,latitude]}`）——
+> （`{year,month,day,hour,minute,gender[,longitude][,latitude][,leapMonth]}`）——
 > 依原樣收到的精確參數，絕未被位移。正午案例亦同：引擎會正規化
 > 小時的表示方式。
+
+### `ziwei_patterns`（2026-11-10 新增）
+
+於內部產生的本命盤之上做確定性的格局辨識 ＋ 命宮摘要。出生參數與
+`ziwei_chart` 完全相同（含 `longitude` 真太陽時修正與 `leapMonth` 闰月約定）；
+`ziwei_chart` 本身的輸出形狀保持不變。
+
+兩族識別器，以 `patterns[].strict` 區分：
+
+- **strict `true`** —— 《紫微斗數全書》卷一的四張格表（定貴局 27 / 定富局 6 /
+  定貧賤局 8；定雜局非本命盤可判）。依原書注文逐字判定，不放寬。每條命中
+  在 `source` 帶原書條目號（`《紫微斗數全書·卷一·定貴局》第N條`），
+  `description` 即原書注文。
+- **strict `false`** —— 41 個通用識別器（機月同梁、殺破狼、府相朝垣……），
+  帶分層 `conditions`（`required` / `bonus` / `breaking`），其中四化加分線經
+  引擎的 `palaceHasSiHua` / `sanFangHasSiHua` 判定。
+
+`mingGong` 攜帶命宮脈絡：`branch`、`mainStars`、`nature`、`keywords`；命宮
+空宮時另有 `borrowedFrom` 塊，標出所借對宮之宮名與主星（空宮借星）。
+`counts` 給出 `{total, strict, loose}`。
+
+```jsonc
+// 黃金錨點盤
+{"year":1986,"month":12,"day":8,"hour":23,"minute":45,"gender":"male","longitude":114.2}
+// 命宮空宮範例 —— 會回報 borrowedFrom
+{"year":1990,"month":5,"day":20,"hour":8,"minute":0,"gender":"female"}
+```
 
 ### `ziwei_sihua_layers`
 
@@ -260,6 +293,38 @@ bash services/ziwei-mcp/tests/http-tests.sh    # HTTP：auth、protocol、batch�
 `1986-12-08 23:45 male lon 114.2` → 有效日期 `1986-12-09`，四柱
 丙寅/庚子/丁亥/庚子，命宮 子·天同(旺)（太陰同宮），土五局，命主 貪狼，
 身主 天梁，生年四化：天同祿→命宮，天機權→官禄，文昌科→夫妻，廉貞忌→子女。
+
+## 變更記錄 —— 2026-11-10（格局批次：`ziwei_patterns` 工具 ＋ `leapMonth` 參數）
+
+**新工具 `ziwei_patterns`** —— 專用的格局辨識 ＋ 命宮摘要，基於引擎的
+`detectPatterns` / `getMingGongSummary`（引擎鎖定 `495b79e` → `906bd93`，後者新增
+《紫微斗數全書》卷一嚴格格表與修正後的四化加分邏輯）。`ziwei_chart` 的輸出
+形狀未變（黃金命盤輸出經驗證前後位元組相同）；新工具的存在使既有消費方
+完全不會看到形狀變化。
+
+**`leapMonth` 參數**（`ziwei_chart` 與 `ziwei_patterns` 兩者）：可選闰月約定
+`split`（預設）/ `next-month` / `prev-month` / `origin-month`，透傳至引擎。
+無效值以列出可接受值的清晰 ToolError 拒絕（引擎本身會拋 `RangeError` ——
+上游 #71 —— 本包裝層將其乾淨地呈現）。省略該參數即維持引擎預設（`split`）
+與 2026-11-10 之前的精確位元組。
+
+**自測：** `ziwei_selftest` 新增檢查 14–17（共 17 項）：黃金盤檢出格局清單、
+四化加分反向控制（文昌化科位於黃金盤三方四正之外 → `再會化科` 加分
+必須**不**觸發），以及兩個嚴格卷一表的正例 fixture（1978-07-01 11:00 male →
+七殺朝斗 定貴局第11條 ＋ 殺破狼 化禄/化权 加分經 `sanFangHasSiHua` 觸發；
+1990-05-20 08:00 female → 坐貴向貴 定貴局第9條）。黃金錨點盤本身觸發零個
+嚴格條目（天同太陰在子與 49 條格表均不符）—— 改以 fixture 鎖定。
+
+**交叉核對：** 工具的格局清單與 CLI 參考（`scripts/ziwei-chart.ts` 的
+`detectPatterns` 輸出）在黃金盤與 fixture 盤上完全一致。
+
+**版本：** stdio 0.1.0 → **0.3.0**，HTTP 0.2.0 → **0.3.0**（統一；兩個 transport
+都攜帶新工具）。`tools/list` 現返回 10 個工具。
+
+**契約：** 黃金 `ziwei_chart` 輸出位元組相同；預設 render SVG 位元組相同；
+`ziwei_chart` 僅增加 `leapMonth`（輸入）與 `meta.leapMonth` /
+`meta.rawInput.leapMonth`（提供時回顯）。本批次無 vendor 變更 —— 引擎已在
+906bd93。
 
 ## 變更記錄 —— 2026-11-05 07:45（深度審查修正：鏡射測試、lunarMonth 路徑、jiFlags、async batch_stats、參數衛生）
 
@@ -424,4 +489,4 @@ MIT —— 見 [LICENSE](LICENSE)。Copyright (c) 2026 PeterYuen。
 [github.com/Renhuai123/ziwei-doushu](https://github.com/Renhuai123/ziwei-doushu)
 的紫微斗數引擎（引擎原始碼 MIT、資料集 CC BY 4.0）。本 repository 未複製
 任何引擎原始碼或資料集內容 —— 使用者須依安裝章節自行 vendor 鎖定副本
-（`495b79e`）。見 [NOTICE](NOTICE)。
+（`906bd93`）。見 [NOTICE](NOTICE)。

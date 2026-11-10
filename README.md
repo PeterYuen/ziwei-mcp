@@ -13,12 +13,14 @@ per call, nothing stored), zero LLM inside the server — pure engine math.
   imported VERBATIM by both entrypoints (single source of truth; no forked logic).
 - `index.ts` — Phase 1 entrypoint: newline-delimited JSON-RPC 2.0 over stdin/stdout
   (stdlib only, **no npm installs**); thin plumbing over `tools.ts`.
-- Engine (read-only, pinned `495b79e`): `../../vendor/ziwei-doushu/lib/ziwei/`
+- Engine (read-only, pinned `906bd93`): `../../vendor/ziwei-doushu/lib/ziwei/`
   (`algorithm.generateChart`, `sihua.*`, `true-solar-time.*`). Never modified.
-- The true-solar-time correction is applied in `tools.ts`: the vendored
-  `generateChart` ignores `birthInfo.longitude`, so the correction
-  (longitude + equation of time → 时辰 branch + day offset, `next-day` late-子 rule)
-  is applied **before** calling the engine.
+- The true-solar-time correction is applied in `tools.ts`: the engine's
+  `generateChart` consumes `birthInfo.longitude` only together with an
+  `origInput` clock-time block (engine ≥ 906bd93), which this service does not
+  send; the correction (longitude + equation of time → 时辰 branch + day offset,
+  `next-day` late-子 rule) is applied **before** calling the engine, exactly as
+  in `scripts/ziwei-chart.ts` — one shared correction path, byte-identical output.
 - `http.ts` — Phase 2 entrypoint: `node:http` daemon implementing MCP **Streamable
   HTTP** in pure-JSON response mode (see HTTP section below). Binds `0.0.0.0:9878`,
   requires a bearer token on every `/mcp` request.
@@ -39,7 +41,7 @@ Requirements:
 
 - **Node.js ≥ 20** (stdlib only — no npm installs for this service).
 - **Engine dependency:** a vendored copy of the Ziwei Doushu engine, pinned to
-  commit `495b79e` of [github.com/Renhuai123/ziwei-doushu](https://github.com/Renhuai123/ziwei-doushu)
+  commit `906bd93` of [github.com/Renhuai123/ziwei-doushu](https://github.com/Renhuai123/ziwei-doushu)
   (MIT; dataset CC BY 4.0 — see `NOTICE`). The engine is **not** redistributed
   with this repository; place your own checkout at
   `<repo-root>/vendor/ziwei-doushu/` (directory read-only), with its own
@@ -48,7 +50,7 @@ Requirements:
 
 ```bash
 git clone https://github.com/Renhuai123/ziwei-doushu vendor/ziwei-doushu
-( cd vendor/ziwei-doushu && git checkout 495b79e && npm install )
+( cd vendor/ziwei-doushu && git checkout 906bd93 && npm install )
 ```
 
 This service then imports `vendor/ziwei-doushu/lib/ziwei/*` (algorithm, sihua,
@@ -88,7 +90,7 @@ bash services/ziwei-mcp/tests/http-tests.sh   # 38 assertions against the live d
   (next free ≥ 9878) and logs the actual port.
 - **Auth:** `Authorization: Bearer $(cat services/ziwei-mcp/.token)` or `?token=<t>`
   query param (either accepted, constant-time compare). Missing/wrong → **401**.
-- **`GET /health`** — no auth, no chart data: `{"status":"ok","server":"ziwei-mcp","version":"0.2.0"}`.
+- **`GET /health`** — no auth, no chart data: `{"status":"ok","server":"ziwei-mcp","version":"0.3.0"}`.
 - **Transport modes (Streamable HTTP spec):**
   - **JSON response mode** (default): POST a single JSON-RPC message or a batch
     array, get `application/json` back (202 for notification-only posts).
@@ -127,11 +129,12 @@ HTTP instead of `command`; replace `<host>` and read the token from `.token`):
 }
 ```
 
-## Tools (9 — all-tools batch 2026-11-03)
+## Tools (10 — patterns batch 2026-11-10)
 
 | tool | one-liner |
 |---|---|
 | `ziwei_chart` | full natal chart JSON from solar birth data (true-solar correction when `longitude` given) |
+| `ziwei_patterns` | 2026-11-10: 格局 detection + 命宮 summary — 41 general detectors + the strict 《紫微斗数全书》卷一 tables (定贵/定富/定贫贱, original-book item numbers), `patterns[].strict` flags which family |
 | `ziwei_sihua_layers` | 四化 layers daxian/liunian/liuyue + liuri/liushi (day/hour: informational only) |
 | `ziwei_from_city` | chart by city name (Chinese or common English), resolved via vendored `cities.ts`; explicit `longitude` overrides |
 | `ziwei_solar_lunar` | bidirectional solar⇄lunar conversion + four-pillars for the result (1900–2050) |
@@ -144,6 +147,8 @@ HTTP instead of `command`; replace `<host>` and read the token from `.token`):
 Example calls (all via `tools/call` params.arguments):
 
 ```jsonc
+// ziwei_patterns — same birth params as ziwei_chart; optional leapMonth policy
+{"year":1986,"month":12,"day":8,"hour":23,"minute":45,"gender":"male","longitude":114.2}
 // ziwei_from_city — "Hong Kong" ≡ longitude 114.2
 {"year":1986,"month":12,"day":8,"hour":23,"minute":45,"gender":"male","city":"Hong Kong"}
 // ziwei_solar_lunar — exactly one side
@@ -176,6 +181,7 @@ Full natal chart JSON (palaces, stars, brightness, siHua marks, daXians, fourPil
 | `gender` | `"male"`\|`"female"` | |
 | `longitude` | number? | degrees East; enables true-solar-time correction |
 | `latitude` | number? | accepted, inert (correction uses longitude + EoT only) |
+| `leapMonth` | `"split"`\|`"next-month"`\|`"prev-month"`\|`"origin-month"`? | 2026-11-10: 闰月 assignment policy (default `split` = 月中分界, mainstream; `next-month` = 倪师派; invalid values rejected with a clear error). Omitting it keeps the engine default — output byte-identical to pre-2026-11-10 calls |
 
 Result: `{ meta: {effectiveDate, hourBranch, trueSolarTime, fourPillars, rawInput, ...}, chart: <full ZiweiChart> }`.
 Without `longitude` the correction is inert (same chart; `meta.trueSolarTime:null`).
@@ -183,9 +189,36 @@ Without `longitude` the correction is inert (same chart; `meta.trueSolarTime:nul
 > **`birthInfo` vs `meta.rawInput` (2026-11-04):** `chart.birthInfo` reflects the
 > **engine-corrected effective input** (e.g. late-子 birth at 23:00 shows
 > `day+1`, `hour:0`). To echo the caller's **original** values, read
-> `meta.rawInput` (`{year,month,day,hour,minute,gender[,longitude][,latitude]}`) —
+> `meta.rawInput` (`{year,month,day,hour,minute,gender[,longitude][,latitude][,leapMonth]}`) —
 > exact arguments as received, never shifted. Same note applies to noon cases
 > where the engine normalises the hour representation.
+
+### `ziwei_patterns` (new 2026-11-10)
+
+Deterministic 格局 (pattern) detection + 命宮 summary over the internally-generated
+natal chart. Same birth params as `ziwei_chart` (incl. `longitude` true-solar
+correction and `leapMonth`); `ziwei_chart`'s own output shape is unchanged.
+
+Two detector families, distinguished by `patterns[].strict`:
+
+- **strict `true`** — the four 《紫微斗数全书》卷一 tables (定贵局 27 / 定富局 6 /
+  定贫贱局 8; 定杂局 is not natal-chart-judgeable). Judged by the original-book
+  注文, literally, no loosening. Each hit carries the item number in `source`
+  (`《紫微斗数全书·卷一·定贵局》第N条`) and the 原书注文 as `description`.
+- **strict `false`** — 41 general detectors (机月同梁, 杀破狼, 府相朝垣, …) with
+  layered `conditions` (`required` / `bonus` / `breaking`), including 四化 bonus
+  lines that fire via the engine's `palaceHasSiHua` / `sanFangHasSiHua` checks.
+
+`mingGong` carries 命宮 context: `branch`, `mainStars`, `nature`, `keywords`, and
+for an empty 命宮 a `borrowedFrom` block naming the opposite palace + its main
+stars (空宫借星). `counts` gives `{total, strict, loose}`.
+
+```jsonc
+// gold anchor
+{"year":1986,"month":12,"day":8,"hour":23,"minute":45,"gender":"male","longitude":114.2}
+// 命宮空宫 example — reports borrowedFrom
+{"year":1990,"month":5,"day":20,"hour":8,"minute":0,"gender":"female"}
+```
 
 ### `ziwei_sihua_layers`
 
@@ -269,6 +302,41 @@ Reference (gold-standard) birth — a SYNTHETIC anchor date, deliberately not an
 person's: `1986-12-08 23:45 male lon 114.2` → effective `1986-12-09`, pillars
 丙寅/庚子/丁亥/庚子, 命宮 子·天同(旺)（太陰同宮）, 土五局, 命主 貪狼,
 身主 天梁, 生年四化: 天同祿→命宮, 天機權→官禄, 文昌科→夫妻, 廉貞忌→子女.
+
+## Changelog — 2026-11-10 (patterns batch: `ziwei_patterns` tool + `leapMonth` param)
+
+**New tool `ziwei_patterns`** — dedicated 格局 detection + 命宮 summary, built on
+the engine's `detectPatterns` / `getMingGongSummary` (engine pin updated
+`906bd93` → `906bd93`, which adds the strict 《紫微斗数全书》卷一 tables and the
+fixed 四化 bonus logic). `ziwei_chart`'s output shape is untouched (gold-chart
+output verified byte-identical before/after); the new tool exists so existing
+consumers never see a shape change.
+
+**`leapMonth` parameter** (both `ziwei_chart` and `ziwei_patterns`): optional
+闰月 policy `split` (default) / `next-month` / `prev-month` / `origin-month`,
+threaded to the engine. Invalid values are rejected with a clear ToolError
+naming the accepted values (the engine itself throws `RangeError` — upstream
+#71 — this wrapper surfaces it cleanly). Omitting the parameter keeps the
+engine default (`split`) and the exact pre-2026-11-10 bytes.
+
+**Selftest:** `ziwei_selftest` grew checks 14–17 (17 total): gold-chart detected-
+pattern list, a 四化-bonus negative control (文昌化科 sits outside the gold
+三方四正 → `再会化科` bonus must NOT fire), and two positive fixtures for the
+strict 卷一 tables (1978-07-01 11:00 male → 七杀朝斗 定贵局第11条 + 杀破狼
+化禄/化权 bonus via `sanFangHasSiHua`; 1990-05-20 08:00 female → 坐贵向贵
+定贵局第9条). The gold anchor itself fires ZERO strict entries (天同太阴 in 子
+matches none of the 49 table entries) — anchored on fixtures instead.
+
+**Cross-check:** tool pattern lists match the CLI reference
+(`scripts/ziwei-chart.ts` `detectPatterns` output) for gold + fixture births.
+
+**Version:** stdio 0.1.0 → **0.3.0**, HTTP 0.2.0 → **0.3.0** (unified; both
+transports carry the new tool). `tools/list` now returns 10 tools.
+
+**Contract:** gold `ziwei_chart` output byte-identical; default render SVG
+byte-identical; `ziwei_chart` gained only additive `leapMonth` (input) and
+`meta.leapMonth`/`meta.rawInput.leapMonth` (echo when given). No vendor changes
+in this batch — engine was already at 906bd93.
 
 ## Changelog — 2026-11-05 07:45 (deep-review fixes: mirror test, lunarMonth path, jiFlags, async batch_stats, arg hygiene)
 
@@ -459,4 +527,4 @@ Third-party attribution: this service **wraps but does not redistribute** the
 Ziwei Doushu engine from [github.com/Renhuai123/ziwei-doushu](https://github.com/Renhuai123/ziwei-doushu)
 (engine source MIT, dataset CC BY 4.0). No engine source or dataset content is
 copied into this repository — users must vendor their own pinned copy
-(`495b79e`) per the Install section. See [NOTICE](NOTICE).
+(`906bd93`) per the Install section. See [NOTICE](NOTICE).
