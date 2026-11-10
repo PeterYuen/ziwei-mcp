@@ -28,14 +28,14 @@ if node -e '
 const fs=require("fs");
 const L=fs.readFileSync(process.argv[1],"utf8").trim().split("\n").map(JSON.parse);
 const init=L.find(x=>x.id===1).result;
-if(init.serverInfo.name!=="ziwei-mcp"||init.serverInfo.version!=="0.1.0")process.exit(1);
+if(init.serverInfo.name!=="ziwei-mcp"||init.serverInfo.version!=="0.3.0")process.exit(1);
 if(init.protocolVersion!=="2025-06-18")process.exit(1);
 if(!init.capabilities.tools)process.exit(1);
 const tl=L.find(x=>x.id===2).result.tools;
 if(tl.length<2||!tl.every(t=>t.inputSchema&&t.name))process.exit(1);
 if(!tl.some(t=>t.name==="ziwei_chart")||!tl.some(t=>t.name==="ziwei_sihua_layers"))process.exit(1);
 // 2026-11-03 all-tools batch: tools/list must expose every registered tool
-const EXPECTED=["ziwei_chart","ziwei_sihua_layers","ziwei_from_city","ziwei_solar_lunar","ziwei_selftest","ziwei_compatibility","ziwei_batch_stats","ziwei_school_compare","ziwei_render"];
+const EXPECTED=["ziwei_chart","ziwei_patterns","ziwei_sihua_layers","ziwei_from_city","ziwei_solar_lunar","ziwei_selftest","ziwei_compatibility","ziwei_batch_stats","ziwei_school_compare","ziwei_render"];
 if(tl.length!==EXPECTED.length||!EXPECTED.every(n=>tl.some(t=>t.name===n)))process.exit(1);
 const call=L.find(x=>x.id===3).result;
 if(!call.content||call.content[0].type!=="text"||!JSON.parse(call.content[0].text).chart)process.exit(1);

@@ -5,7 +5,8 @@
  *   - index.ts  (Phase 1, MCP stdio, newline-delimited JSON-RPC)
  *   - http.ts   (Phase 2, MCP Streamable HTTP daemon)
  *
- * Engine (READ-ONLY, pinned 495b79e): ../../vendor/ziwei-doushu/lib/ziwei/
+ * Engine (READ-ONLY, pinned 906bd93 (engine @ upstream 21114e3 + true-solar
+ * longitude fix)): ../../vendor/ziwei-doushu/lib/ziwei/
  * True-solar-time correction replicates scripts/ziwei-chart.ts exactly:
  * the vendored generateChart ignores birthInfo.longitude, so the correction
  * (longitude + equation of time -> 时辰 branch + day offset) is applied here
@@ -16,6 +17,7 @@
  */
 import { generateChart } from '../../vendor/ziwei-doushu/lib/ziwei/algorithm';
 import type { BirthInfo, ZiweiChart, SiHua } from '../../vendor/ziwei-doushu/lib/ziwei/types';
+import { detectPatterns, getMingGongSummary } from '../../vendor/ziwei-doushu/lib/ziwei/patterns';
 import {
   calculateTrueSolarTime,
   resolveZiweiDayOffset,
@@ -60,7 +62,7 @@ import { dirname as dirnameOf, join as joinPath } from 'node:path';
 export const SERVER_NAME = 'ziwei-mcp';
 // Stdio reports 0.1.0 (the Phase-1 test suite asserts it); the HTTP daemon
 // overrides to 0.2.0 via dispatch()'s serverVersion option.
-export const SERVER_VERSION = '0.1.0';
+export const SERVER_VERSION = '0.3.0';
 export const DEFAULT_PROTOCOL = '2025-06-18';
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -166,6 +168,23 @@ function resolveBirth(args: {
     hourBranch: branch,
     longitude: longitude ?? null,
   };
+}
+
+const LEAP_MONTH_POLICIES: readonly string[] = ['split', 'next-month', 'prev-month', 'origin-month'];
+
+/**
+ * leapMonth (闰月) policy validation — mirrors the engine's own enum check
+ * (algorithm.ts throws RangeError on invalid policy, upstream #71) so callers
+ * get a clean ToolError naming the accepted values before any chart work.
+ */
+function assertLeapMonth(v: unknown): LunarMonthPolicy | undefined {
+  if (v === undefined) return undefined;
+  if (typeof v !== 'string' || !LEAP_MONTH_POLICIES.includes(v)) {
+    throw new ToolError(
+      `leapMonth must be one of "split" | "next-month" | "prev-month" | "origin-month"; received ${JSON.stringify(v)}`,
+    );
+  }
+  return v as LunarMonthPolicy;
 }
 
 function buildChart(rb: ResolvedBirth, opts?: { leapMonth?: LunarMonthPolicy }): ZiweiChart {
@@ -389,11 +408,12 @@ function toolZiweiChart(args: any): unknown {
   if (args.latitude !== undefined && typeof args.latitude !== 'number') {
     throw new ToolError(`latitude must be a number; received ${JSON.stringify(args.latitude)}`);
   }
+  const leapMonth = assertLeapMonth(args.leapMonth);
 
   const rb = resolveBirth({ year, month, day, hour, minute, gender, longitude: args.longitude });
   // latitude: accepted for schema completeness; the engine's correction is
   // longitude + equation of time only (see true-solar-time.ts), so it is inert.
-  const chart = buildChart(rb);
+  const chart = buildChart(rb, leapMonth ? { leapMonth } : undefined);
 
   return {
     meta: {
@@ -405,6 +425,7 @@ function toolZiweiChart(args: any): unknown {
         year, month, day, hour, minute, gender,
         ...(args.longitude !== undefined ? { longitude: args.longitude } : {}),
         ...(args.latitude !== undefined ? { latitude: args.latitude } : {}),
+        ...(args.leapMonth !== undefined ? { leapMonth } : {}),
       },
       effectiveDate: rb.effectiveDate,
       hourBranch: `${rb.hourBranch}(${BRANCHES[rb.hourBranch]})`,
@@ -413,8 +434,100 @@ function toolZiweiChart(args: any): unknown {
       trueSolarTime: rb.trueSolarTime,
       fourPillars: chart.lunarInfo.fourPillars ?? null,
       fourPillarsLunar: chart.lunarInfo.fourPillarsLunar ?? null,
+      ...(leapMonth !== undefined ? { leapMonth } : {}),
     },
     chart,
+  };
+}
+
+// ── ziwei_patterns ──────────────────────────────────────────────────────────
+
+/**
+ * Strict 《全书》 entries are tagged by their detectQuanshuStrict source
+ * string (《紫微斗数全书·卷一·<table>》第N条). The 41 general detectors in
+ * patterns.ts carry other source strings (or none) — 卷一 is the discriminator.
+ */
+const STRICT_SOURCE_MARK = '·卷一·';
+
+function toolZiweiPatterns(args: any): unknown {
+  if (args === null || typeof args !== 'object') throw new ToolError('arguments must be an object');
+  const year = assertInt(args.year, 'year', 1, 9999);
+  const month = assertInt(args.month, 'month', 1, 12);
+  const day = assertInt(args.day, 'day', 1, 31);
+  const minute = args.minute === undefined ? 0 : assertInt(args.minute, 'minute', 0, 59);
+  const gender = assertGender(args.gender);
+  const hour = assertInt(args.hour, 'hour (clock)', 0, 23);
+  if (args.longitude !== undefined && typeof args.longitude !== 'number') {
+    throw new ToolError(`longitude must be a number; received ${JSON.stringify(args.longitude)}`);
+  }
+  if (args.latitude !== undefined && typeof args.latitude !== 'number') {
+    throw new ToolError(`latitude must be a number; received ${JSON.stringify(args.latitude)}`);
+  }
+  const leapMonth = assertLeapMonth(args.leapMonth);
+
+  const rb = resolveBirth({ year, month, day, hour, minute, gender, longitude: args.longitude });
+  const chart = buildChart(rb, leapMonth ? { leapMonth } : undefined);
+
+  const detected = detectPatterns(chart);
+  const patterns = detected.map(p => ({
+    name: p.name,
+    level: p.level,
+    description: p.description,
+    palaces: p.palaces,
+    // strict:true → judged by the 《全书》卷一 tables (定贵/定富/定贫贱),
+    // description carries the 原书注文 + item number; false → general detector.
+    strict: (p.source ?? '').includes(STRICT_SOURCE_MARK),
+    ...(p.source !== undefined ? { source: p.source } : {}),
+    ...(p.conditions !== undefined ? { conditions: p.conditions } : {}),
+  }));
+
+  const mingPalace = chart.palaces.find(p => p.branch === chart.mingGongBranch)!;
+  const mainStars = mingPalace.stars.filter(s => s.type === 'major').map(s => s.name);
+  const summary = getMingGongSummary(chart);
+  const mingGong: Record<string, unknown> = {
+    branch: BRANCHES[mingPalace.branch],
+    mainStars,
+    nature: summary.nature,
+    keywords: summary.keywords,
+  };
+  if (mainStars.length === 0) {
+    // 空宫借对宫主星 — report what the 命宫 borrows from the opposite palace.
+    const opposite = chart.palaces.find(p => p.branch === (chart.mingGongBranch + 6) % 12);
+    if (opposite) {
+      mingGong.borrowedFrom = {
+        palace: opposite.name,
+        mainStars: opposite.stars.filter(s => s.type === 'major').map(s => s.name),
+      };
+    }
+  }
+
+  return {
+    meta: {
+      input: { year, month, day, clockHour: hour, clockMinute: minute, gender },
+      rawInput: {
+        year, month, day, hour, minute, gender,
+        ...(args.longitude !== undefined ? { longitude: args.longitude } : {}),
+        ...(args.latitude !== undefined ? { latitude: args.latitude } : {}),
+        ...(args.leapMonth !== undefined ? { leapMonth } : {}),
+      },
+      effectiveDate: rb.effectiveDate,
+      hourBranch: `${rb.hourBranch}(${BRANCHES[rb.hourBranch]})`,
+      dayShiftFromLateZi: rb.dayShiftFromLateZi,
+      longitude: rb.longitude,
+      trueSolarTime: rb.trueSolarTime,
+      leapMonth: leapMonth ?? 'split (engine default)',
+    },
+    mingGong,
+    patterns,
+    counts: {
+      total: patterns.length,
+      strict: patterns.filter(p => p.strict).length,
+      loose: patterns.filter(p => !p.strict).length,
+    },
+    strictModeNote:
+      'patterns[].strict=true marks entries judged by the four 《紫微斗数全书》卷一 tables '
+      + '(定贵局/定富局/定贫贱局) with original-book item numbers in description/source; '
+      + 'strict=false entries come from the general detectors in the engine (looser criteria).',
   };
 }
 
@@ -902,6 +1015,8 @@ function toolZiweiSelftest(_args: any): unknown {
     // Check 13 (2026-11-05 deep fix): direct lunarMonth:1 for 2026 must resolve
     // through the lunar tables to solar 2026-03-03 (丙午 year) → stem 庚.
     // The old two-source bug returned 戊 (乙巳 year — solar Jan 15).
+    // 命宫 context alongside patterns. Reuses the same resolveBirth/buildChart
+    // helpers as ziwei_chart — same true-solar correction, same chart.
     {
       name: 'lunarMonthDirect2026', expected: '庚',
       actual: (() => {
@@ -911,6 +1026,78 @@ function toolZiweiSelftest(_args: any): unknown {
       ok: (() => {
         const r = toolZiweiSihuaLayers({ year: 2026, gender: 'male', birth: { year: 1986, month: 12, day: 8, hour: 12, minute: 0 }, layers: ['liuyue'], lunarMonth: 1 }) as any;
         return r.layers.liuyue.stem === '庚';
+      })(),
+    },
+    // Checks 14–17 (2026-11-10 pattern-anchor batch, engine 906bd93): detectPatterns
+    // gold anchors. Expected names captured from the CURRENT engine before the
+    // checks were written — not guessed. The gold chart fires ZERO strict
+    // 《全书》卷一 entries (its 命宮 is 天同太阴 in 子; none of the 49 strict
+    // table entries match it), so strict-table coverage is anchored on two
+    // auxiliary fixtures below instead of the gold birth.
+    {
+      name: 'patternsGoldGoldChart',
+      expected: '化权入官,天同化禄入命,巨日同宫,机月同梁',
+      actual: detectPatterns(chart).map(p => p.name).sort().join(','),
+      ok: detectPatterns(chart).map(p => p.name).sort().join(',') === '化权入官,天同化禄入命,巨日同宫,机月同梁',
+    },
+    // 四化 bonus fix (palaceHasSiHua/sanFangHasSiHua): the gold chart has
+    // 天同化禄 sitting IN 命宫 itself — 府相朝垣's bonus line '命宫见禄' fires
+    // via palaceHasSiHua. The 4 required stars (府/相/昌/…) need not all be
+    // present, so instead we lock the general detector that DID fire via the
+    // sanFang path: 机月同梁's bonus '再会化科' requires sanFangHasSiHua(科) —
+    // 文昌化科 sits in 夫妻 (branch 10), which is NOT in the gold 三方四正
+    // (命子/财申/官辰/迁午), so that bonus must NOT fire. Both directions of
+    // the fix are covered by the fixture below (杀破狼 bonus fires via
+    // sanFangHasSiHua) + this negative control.
+    {
+      name: 'siHuaBonusNegativeControlGold',
+      expected: '机月同梁 without 再会化科 bonus (化科 in 夫妻, outside 三方四正)',
+      actual: (() => {
+        const p = detectPatterns(chart).find(x => x.name === '机月同梁');
+        return p ? JSON.stringify(p.conditions?.bonus ?? []) : 'pattern missing';
+      })(),
+      ok: (() => {
+        const p = detectPatterns(chart).find(x => x.name === '机月同梁');
+        return !!p && !(p.conditions?.bonus ?? []).includes('再会化科');
+      })(),
+    },
+    // Strict-table fixture A (1978-07-01 11:00 male, no longitude — branch 5
+    // 巳): 命宮 七杀 in 子 fires 七杀朝斗 via the strict 定贵局 table (第11条)
+    // AND 杀破狼 whose bonus '三方有化禄或化权' fires via sanFangHasSiHua —
+    // the positive side of the 四化 bonus fix.
+    {
+      name: 'patternsStrictFixtureA',
+      expected: '七杀朝斗[strict《全书》定贵局第11条]+杀破狼化禄化权bonus',
+      actual: (() => {
+        const fa = buildChart(resolveBirth({ year: 1978, month: 7, day: 1, hour: 11, minute: 0, gender: 'male' }));
+        const pats = detectPatterns(fa);
+        const strict = pats.find(p => p.name === '七杀朝斗' && (p.source ?? '').includes('·卷一·'));
+        const sk = pats.find(p => p.name === '杀破狼');
+        const bonusOk = !!(sk?.conditions?.bonus ?? []).some(b => b.includes('三方有化禄或化权'));
+        return strict ? `七杀朝斗 strict ✓, 杀破狼 bonus ${bonusOk ? '✓' : '✗'}` : `七杀朝斗 strict ✗ (pats: ${pats.map(p => p.name).join(',')})`;
+      })(),
+      ok: (() => {
+        const fa = buildChart(resolveBirth({ year: 1978, month: 7, day: 1, hour: 11, minute: 0, gender: 'male' }));
+        const pats = detectPatterns(fa);
+        const strict = pats.find(p => p.name === '七杀朝斗' && (p.source ?? '').includes('·卷一·'));
+        const sk = pats.find(p => p.name === '杀破狼');
+        const bonusOk = !!(sk?.conditions?.bonus ?? []).some(b => b.includes('三方有化禄或化权'));
+        return !!strict && bonusOk;
+      })(),
+    },
+    // Strict-table fixture B (1990-05-20 08:00 female, no longitude — branch 3
+    // 卯): 命宮 空宫 in 丑 fires 坐贵向贵 via strict 定贵局 第9条 (魁钺坐命).
+    {
+      name: 'patternsStrictFixtureB',
+      expected: '坐贵向贵[strict《全书》定贵局第9条]',
+      actual: (() => {
+        const fb = buildChart(resolveBirth({ year: 1990, month: 5, day: 20, hour: 8, minute: 0, gender: 'female' }));
+        const strict = detectPatterns(fb).find(p => p.name === '坐贵向贵' && (p.source ?? '').includes('·卷一·'));
+        return strict ? `坐贵向贵 strict ✓ (${strict.source})` : '坐贵向贵 strict ✗';
+      })(),
+      ok: (() => {
+        const fb = buildChart(resolveBirth({ year: 1990, month: 5, day: 20, hour: 8, minute: 0, gender: 'female' }));
+        return !!detectPatterns(fb).find(p => p.name === '坐贵向贵' && (p.source ?? '').includes('·卷一·'));
       })(),
     },
   ];
@@ -1513,11 +1700,40 @@ export const TOOLS: ToolDef[] = [
         gender: { type: 'string', enum: ['male', 'female'] },
         longitude: { type: 'number', description: 'Birthplace longitude (degrees East); enables true-solar-time correction' },
         latitude: { type: 'number', description: 'Accepted but inert (engine correction uses longitude + equation of time only)' },
+        leapMonth: { type: 'string', enum: ['split', 'next-month', 'prev-month', 'origin-month'], default: 'split', description: '闰月 (leap month) assignment policy: split = 月中分界 (default, mainstream convention); next-month = 归下月 (倪师派); prev-month = 归上月; origin-month = 归本历年月' },
       },
       required: ['year', 'month', 'day', 'hour', 'minute', 'gender'],
       additionalProperties: false,
     },
     handler: toolZiweiChart,
+  },
+  {
+    name: 'ziwei_patterns',
+    description:
+      'Detect 格局 (structural patterns) in a natal chart deterministically, with 命宮 context. '
+      + 'Same birth params as ziwei_chart (incl. optional leapMonth policy). Runs the engine\'s '
+      + 'pattern detectors: 41 general detectors PLUS the strict 《紫微斗数全书》卷一 tables '
+      + '(定贵局 27 / 定富局 6 / 定贫贱局 8, each hit carries the original-book item number and '
+      + '注文 as description/source). patterns[].strict distinguishes the two families. '
+      + 'mingGong carries 命宮 main stars + nature + borrowed-from-opposite info for empty palaces. '
+      + 'Stateless; deterministic; no LLM.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        year: { type: 'integer', description: 'Solar (Gregorian) birth year' },
+        month: { type: 'integer', minimum: 1, maximum: 12 },
+        day: { type: 'integer', minimum: 1, maximum: 31 },
+        hour: { type: 'integer', minimum: 0, maximum: 23, description: 'Local clock hour (23 = late-zi, chart day advances)' },
+        minute: { type: 'integer', minimum: 0, maximum: 59, default: 0 },
+        gender: { type: 'string', enum: ['male', 'female'] },
+        longitude: { type: 'number', description: 'Birthplace longitude (degrees East); enables true-solar-time correction' },
+        latitude: { type: 'number', description: 'Accepted but inert (engine correction uses longitude + equation of time only)' },
+        leapMonth: { type: 'string', enum: ['split', 'next-month', 'prev-month', 'origin-month'], default: 'split', description: '闰月 (leap month) assignment policy (see ziwei_chart)' },
+      },
+      required: ['year', 'month', 'day', 'hour', 'minute', 'gender'],
+      additionalProperties: false,
+    },
+    handler: toolZiweiPatterns,
   },
   {
     name: 'ziwei_sihua_layers',
@@ -1618,7 +1834,9 @@ export const TOOLS: ToolDef[] = [
     description:
       'Run the built-in gold-standard regression self-test (synthetic anchor birth 1986-12-08 23:45 male lon 114.2): '
       + 'effectiveDate, fourPillars, 命宮 branch + 天同(旺), 土五局, 命主/身主, true-solar clock '
-      + '23:29:34. Deterministic, no arguments, no external calls. Returns '
+      + '23:29:34, liuyue lichun-boundary stems, plus pattern-detection anchors (gold-chart '
+      + 'detected-pattern list, a 四化-bonus negative control, and two strict 《全书》卷一 table '
+      + 'fixtures). Deterministic, no arguments, no external calls. Returns '
       + '{pass, checks:[{name,expected,actual,ok}]}.',
     inputSchema: { type: 'object', properties: {}, additionalProperties: false },
     handler: toolZiweiSelftest,

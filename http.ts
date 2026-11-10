@@ -31,7 +31,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { dispatch, SERVER_NAME, type RpcMessage } from './tools';
 
-const HTTP_VERSION = '0.2.0';
+const HTTP_VERSION = '0.3.0';
 const HOST = process.env.ZIWEI_MCP_HOST || '0.0.0.0';
 const PORT = Number(process.env.ZIWEI_MCP_PORT || process.env.PORT || 9878);
 const MAX_BODY_BYTES = 1 * 1024 * 1024; // 1 MiB — charts are ~50 KB; guard against junk floods

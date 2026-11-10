@@ -7,7 +7,8 @@
  * this file is ONLY stdin/stdout plumbing, so the Phase-1 behaviour is
  * preserved byte-for-byte while Phase 2 reuses the same implementation.
  *
- * Engine (READ-ONLY, pinned 495b79e): ../../vendor/ziwei-doushu/lib/ziwei/
+ * Engine (READ-ONLY, pinned 906bd93 (engine @ upstream 21114e3 + true-solar
+ * longitude fix)): ../../vendor/ziwei-doushu/lib/ziwei/
  *
  * Transport notes:
  *  - stdout is protocol-only (one JSON object per line). All logging -> stderr.
