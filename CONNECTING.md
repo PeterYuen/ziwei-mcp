@@ -106,14 +106,16 @@ For clients with a different config key layout (e.g. `servers`, `mcp.server`, pe
 
 ```
 mcporter call ziwei-mcp.ziwei_chart --args '{"year":1986,"month":12,"day":8,"hour":23,"minute":45,"gender":"male","longitude":114.2}'
+mcporter call ziwei-mcp.ziwei_patterns --args '{"year":1986,"month":12,"day":8,"hour":23,"minute":45,"gender":"male","longitude":114.2}'
 mcporter call ziwei-mcp.ziwei_sihua_layers --args '{"year":2026,"gender":"male","birth":{"year":1986,"month":12,"day":8,"hour":23,"minute":45,"longitude":114.2},"layers":["daxian","liunian","liuyue"],"lunarMonth":10}'
 ```
 
 ## Tools
 
-Nine tools (2026-11-03 batch). All accept solar birth data unless noted; all are
-stateless, deterministic, zero-LLM. Example calls below use the gold birth
-(synthetic anchor 1986-12-08 23:45 male lon 114.2).
+Ten tools (2026-11-10 patterns batch; 2026-11-03 all-tools batch). All accept
+solar birth data unless noted; all are stateless, deterministic, zero-LLM.
+Example calls below use the gold birth (synthetic anchor 1986-12-08 23:45 male
+lon 114.2).
 
 ### `ziwei_chart`
 Full natal chart. Required: `year, month, day, hour, minute, gender` (`male|female`). Optional: `longitude` (enables true-solar-time correction; `hour` is clock hour 0–23, 23 = late-子 → chart day advances), `latitude` (accepted, inert), `leapMonth` (2026-11-10: 闰月 policy `split` (default) | `next-month` | `prev-month` | `origin-month`; invalid values rejected with a clear error). Returns `{meta, chart}` — palaces, stars with brightness, birth siHua, daXians, fourPillars, effectiveDate, trueSolarTime.
