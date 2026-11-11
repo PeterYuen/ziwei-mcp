@@ -74,6 +74,9 @@ section I daemon on port 9879, HTTP suite against a throwaway daemon on
 
 Gold `ziwei_chart` output byte-identical to main-tip 95aa1fa (`cmp` of the
 tools/call response line; only the `initialize` serverInfo version differs).
+CI itself verified twice: first run failed on the missing `server-only` stub
+(caught by CI, fixed in the same PR), second run **green** (both suites, all
+steps) on commit 1bbe77f.
 
 ## 2026-11-11 — v0.3.1
 
