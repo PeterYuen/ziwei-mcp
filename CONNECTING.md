@@ -1,8 +1,8 @@
 # ziwei-mcp — Connection Info (for testing in other systems)
 
 **Server:** ziwei-mcp · two transports:
-- **stdio** v0.3.0 (Phase 1) — local processes only
-- **Streamable HTTP** v0.3.0 (Phase 2) — LAN/remote via URL, bearer-token
+- **stdio** v0.3.1 (Phase 1) — local processes only
+- **Streamable HTTP** v0.3.1 (Phase 2) — LAN/remote via URL, bearer-token
 
 **Engine:** vendored ziwei-doushu @ `906bd93` (engine @ upstream 21114e3 + true-solar longitude fix) (MIT, upstream github.com/Renhuai123/ziwei-doushu)
 Both transports share one implementation module (`tools.ts`) — identical tool behaviour.
@@ -12,7 +12,7 @@ Both transports share one implementation module (`tools.ts`) — identical tool 
 **URL:** `http://<host>:9878/mcp` (the daemon binds 0.0.0.0 — remote clients use the host's own LAN address)
 **Token:** read `services/ziwei-mcp/.token` on the server host (chmod 600) — send it as
 `Authorization: Bearer <token>` or `?token=<token>` (either accepted). Missing/wrong → 401.
-**Health:** `GET /health` (no auth) → `{"status":"ok","server":"ziwei-mcp","version":"0.3.0"}`
+**Health:** `GET /health` (no auth) → `{"status":"ok","server":"ziwei-mcp","version":"0.3.1"}`
 **Service:** `systemctl --user {start,restart,status} ziwei-mcp` (enabled at boot, Linger=yes)
 
 ### Remote client config (streamable HTTP — most MCP clients accept `url`)
@@ -44,7 +44,7 @@ curl -s -X POST http://127.0.0.1:9878/mcp \
   -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"probe","version":"1"}}}'
 ```
 
-Expected: `serverInfo` `ziwei-mcp/0.3.0`, then `tools/list` returns all ten tools.
+Expected: `serverInfo` `ziwei-mcp/0.3.1`, then `tools/list` returns all ten tools.
 
 ### HTTP protocol details
 
@@ -289,7 +289,7 @@ printf '%s\n' \
      <repo-root>/services/ziwei-mcp/index.ts
 ```
 
-Expected: line 1 = initialize result (serverInfo `ziwei-mcp/0.3.0`), line 3 = both tools with schemas.
+Expected: line 1 = initialize result (serverInfo `ziwei-mcp/0.3.1`), line 3 = both tools with schemas.
 
 ## Gold-standard assertion (use this to verify your client wired correctly — same on both transports)
 

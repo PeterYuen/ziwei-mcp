@@ -5,6 +5,48 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); dates and
 versions newest first. Version numbers apply to both transports (stdio and
 Streamable HTTP) unless noted.
 
+## 2026-11-11 — v0.3.1
+
+### Fixed
+- **batch-stats worker count clamped to free memory** — `ziwei_batch_stats`
+  spawned up to 12 parallel workers, each loading the engine + lunar tables.
+  On memory-tight hosts (~1.4 GB free) the kernel oom-killer took the child
+  down (exit 137) and the tool masked it as `timed out after 120 s (killed)`.
+  `batch-stats-worker.mts` now computes a memory cap from `freemem()`
+  (~512 MB per worker) and clamps the worker count to
+  min(workers, availableParallelism, memCap), logging one stderr line when
+  clamped (stdout stays pure JSON).
+- **OOM surfaced as an explicit error** — the `ziwei_batch_stats` handler in
+  `tools.ts` records free memory at spawn and reports exit 137 / SIGKILL as
+  `batch-stats worker killed by SIGKILL (likely OOM — free memory at spawn
+  ~N MB; …)` instead of a timeout; other non-zero exits now append the signal
+  name when present.
+- **Version bump** 0.3.0 → **0.3.1** (both transports; `tools/list` and
+  `GET /health` unchanged otherwise).
+
+### Test results
+
+Suite `tests/run-tests.sh` (A–H) run 2026-11-11 on the production box
+(`free -m` at run time: available ≈ 1388 MB — i.e. under the memory pressure
+that used to trigger the OOM):
+
+| Section | Result |
+|---|---|
+| A protocol | PASS |
+| B reference chart (gold) | PASS |
+| C layers | PASS |
+| D robustness | PASS |
+| E new tools | PASS |
+| F bugfix+feature regression | PASS |
+| G deep-fix regression | PASS |
+| H batch-stats memory resilience | PASS |
+
+H specifics: `ziwei_batch_stats` (wuxingJu-distribution, male, 1950,
+hours=all) computed 4380 charts with `workers=2` (free-memory clamp active,
+512 MB/worker divisor unchanged), sum(distribution)==chartsComputed, no
+isError. Standalone probe of the same call: 4380 charts, workers=2, ≈55 s,
+clean. Gold `ziwei_chart` output byte-identical to pre-change (section B).
+
 ## 2026-11-10 — v0.3.0
 
 ### Added

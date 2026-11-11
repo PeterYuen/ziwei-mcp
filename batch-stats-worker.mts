@@ -12,13 +12,20 @@
  *   object to stdout.
  */
 import { Worker } from 'node:worker_threads';
-import { availableParallelism } from 'node:os';
+import { availableParallelism, freemem } from 'node:os';
 import { fileURLToPath } from 'node:url';
 
 const args = JSON.parse(process.argv[2] ?? '{}');
 const { y1, y2, gender, hours, startDayOffset, dayCount, stride } = args;
 
-const nw = Math.max(1, Math.min(args.workers ?? 12, availableParallelism ? availableParallelism() : 8));
+// OOM guard (2026-11-11): each worker loads the engine + lunar tables, so on
+// a memory-tight box 12 workers get oom-killed (exit 137) and the whole batch
+// dies. Clamp worker count to available free memory (~512 MB per worker).
+const memCap = Math.max(1, Math.floor(freemem() / (512 * 1024 * 1024)));
+const nw = Math.max(1, Math.min(args.workers ?? 12, availableParallelism ? availableParallelism() : 8, memCap));
+if (nw < (args.workers ?? 12)) {
+  process.stderr.write(`[batch-stats] workers clamped to ${nw} (free memory ${Math.round(freemem() / (1024 * 1024))} MB)\n`);
+}
 const t0 = Date.now();
 const slots = dayCount * hours.length;
 const chunks: number[][][] = Array.from({ length: nw }, () => []);

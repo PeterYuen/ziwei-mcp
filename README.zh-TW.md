@@ -90,7 +90,7 @@ bash services/ziwei-mcp/tests/http-tests.sh   # 對線上 daemon 的 38 項斷�
   （取 ≥ 9878 的下一個空埠）並在 log 中記錄實際 port。
 - **Auth：** `Authorization: Bearer *** services/ziwei-mcp/.token)` 或 `?token=***<t>`
   query param（兩者皆可，常數時間比對）。缺少／錯誤 → **401**。
-- **`GET /health`** — 無需 auth、不含命盤資料：`{"status":"ok","server":"ziwei-mcp","version":"0.3.0"}`。
+- **`GET /health`** — 無需 auth、不含命盤資料：`{"status":"ok","server":"ziwei-mcp","version":"0.3.1"}`。
 - **Transport 模式（Streamable HTTP 規範）：**
   - **JSON 回應模式**（預設）：POST 單一 JSON-RPC 訊息或批次陣列，
     取回 `application/json`（僅通知的 POST 回 202）。
@@ -298,6 +298,17 @@ bash services/ziwei-mcp/tests/http-tests.sh    # HTTP：auth、protocol、batch�
 
 正式日期式變更記錄見 **[CHANGES.md](CHANGES.md)**（Keep a Changelog 格式，最新在上）。
 以下逐段為各版本的詳細敘述性記錄。
+
+## 變更記錄 —— 2026-11-11（v0.3.1：batch-stats OOM 加固）
+
+**`ziwei_batch_stats` 記憶體限幅** —— 批次工作行程原先最多平行 12 個執行緒，
+各自載入引擎與農曆表；在記憶體緊張的主機上，核心 oom-killer 會殺死子行程
+（exit 137），而工具將其掩蓋為 120 秒逾時。現依可用記憶體（`freemem()`，
+約每工作行程 512 MB）連同 CPU 平行度一併限幅工作行程數，OOM 遭殺時以
+明確的 `killed by SIGKILL (likely OOM …)` 錯誤呈現並載明啟動時可用記憶體。
+新增測試章節 H 覆蓋此迴歸。黃金 `ziwei_chart` 輸出不變（位元組相同）。
+
+**版本：** 兩個 transport 均為 **0.3.1**。
 
 ## 變更記錄 —— 2026-11-10（格局批次：`ziwei_patterns` 工具 ＋ `leapMonth` 參數）
 

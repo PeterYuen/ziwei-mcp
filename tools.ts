@@ -56,13 +56,14 @@ import {
 } from '../../vendor/ziwei-doushu/lib/ziwei/heming-knowledge';
 import type { LunarMonthPolicy } from '../../vendor/ziwei-doushu/lib/ziwei/algorithm';
 import { spawn } from 'node:child_process';
+import { freemem } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { dirname as dirnameOf, join as joinPath } from 'node:path';
 
 export const SERVER_NAME = 'ziwei-mcp';
 // Stdio reports 0.1.0 (the Phase-1 test suite asserts it); the HTTP daemon
 // overrides to 0.2.0 via dispatch()'s serverVersion option.
-export const SERVER_VERSION = '0.3.0';
+export const SERVER_VERSION = '0.3.1';
 export const DEFAULT_PROTOCOL = '2025-06-18';
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -1364,6 +1365,11 @@ async function toolZiweiBatchStats(args: any): Promise<unknown> {
   // .bin/tsx shim (spawn of the extensionless shim → ENOENT on win32).
   const tsx = joinPath(HERE, '../../vendor/ziwei-doushu/node_modules/tsx/dist/cli.mjs');
   const worker = joinPath(HERE, 'batch-stats-worker.mts');
+  // OOM observability (2026-11-11): record free memory before spawn so an
+  // oom-kill (exit 137 / SIGKILL) can name the real cause instead of looking
+  // like a 120 s timeout. The worker itself clamps its thread count to free
+  // memory (see batch-stats-worker.mts).
+  const freeAtSpawn = freemem();
   // DEEP FIX 2026-11-05: async spawn instead of execFileSync — the old
   // synchronous 120 s call blocked the whole event loop, so /health and every
   // concurrent request queued behind the batch. Same contract otherwise:
@@ -1379,10 +1385,14 @@ async function toolZiweiBatchStats(args: any): Promise<unknown> {
     child.stdout.on('data', (c: Buffer) => { raw += c; });
     child.stderr.on('data', (c: Buffer) => { err += c; });
     child.on('error', (e) => { clearTimeout(timer); reject(new ToolError(`batch-stats worker failed: ${e?.message ?? e}`)); });
-    child.on('close', (code) => {
+    child.on('close', (code, signal) => {
       clearTimeout(timer);
       if (killed) return reject(new ToolError('batch-stats worker timed out after 120 s (killed)'));
-      if (code !== 0) return reject(new ToolError(`batch-stats worker failed (exit ${code})${err ? ': ' + err.slice(0, 300) : ''}`));
+      // OOM kill surfaces as exit 137 (shell convention) or SIGKILL (direct).
+      if (code === 137 || (code === null && signal === 'SIGKILL')) {
+        return reject(new ToolError(`batch-stats worker killed by SIGKILL (likely OOM — free memory at spawn ~${Math.round(freeAtSpawn / (1024 * 1024))} MB; worker count was clamped, see CHANGES.md v0.3.1)`));
+      }
+      if (code !== 0) return reject(new ToolError(`batch-stats worker failed (exit ${code})${signal ? ` (signal ${signal})` : ''}${err ? ': ' + err.slice(0, 300) : ''}`));
       try { resolve(JSON.parse(raw)); } catch { reject(new ToolError('batch-stats worker returned unparseable output')); }
     });
   });

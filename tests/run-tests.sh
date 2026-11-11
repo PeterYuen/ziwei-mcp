@@ -28,7 +28,7 @@ if node -e '
 const fs=require("fs");
 const L=fs.readFileSync(process.argv[1],"utf8").trim().split("\n").map(JSON.parse);
 const init=L.find(x=>x.id===1).result;
-if(init.serverInfo.name!=="ziwei-mcp"||init.serverInfo.version!=="0.3.0")process.exit(1);
+if(init.serverInfo.name!=="ziwei-mcp"||init.serverInfo.version!=="0.3.1")process.exit(1);
 if(init.protocolVersion!=="2025-06-18")process.exit(1);
 if(!init.capabilities.tools)process.exit(1);
 const tl=L.find(x=>x.id===2).result.tools;
@@ -465,4 +465,31 @@ eq([2022,2023,2024,2025,2026,2027,2028].every((y,i)=>R(11+i*3).layers.liuyue.ste
 ' "$TMP/g-table.out"; then ok "G four-path agreement: m1 stems 2022-2028 via flowDate cross-check"; else bad "G four-path table"; fi
 
 echo "──── A-G: $pass passed, $fail failed"
+
+# ── H: batch-stats memory resilience (2026-11-11) ────────────────────────────
+# The 12-worker batch on a memory-tight box used to oom-kill the child
+# (exit 137) and surface as a 120 s timeout. With the free-memory clamp
+# (batch-stats-worker.mts, ~512 MB/worker) the same call must now complete,
+# report a sane worker count, and stay under the timeout.
+H="$TMP/h.jsonl"
+printf '%s\n' \
+ '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18"}}' \
+ '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"ziwei_batch_stats","arguments":{"question":"wuxingJu-distribution","gender":"male","yearFrom":1950,"yearTo":1950,"hours":"all"}}}' \
+ | "$TSX" "$SRV" > "$TMP/h.out" 2>/dev/null
+if node -e '
+const fs=require("fs");
+const L=fs.readFileSync(process.argv[1],"utf8").trim().split("\n").map(JSON.parse);
+const g=L.find(x=>x.id===2);
+if(!g.result||g.result.isError){console.error("batch-stats isError: "+(g.result?g.result.content[0].text.slice(0,200):"no result"));process.exit(1)}
+const d=JSON.parse(g.result.content[0].text);
+if(d.chartsComputed!==4380){console.error("chartsComputed not 4380 (got "+d.chartsComputed+")");process.exit(1)}
+const sum=Object.values(d.distribution).reduce((a,b)=>a+b,0);
+if(sum!==d.chartsComputed){console.error("sum(distribution) "+sum+" != chartsComputed "+d.chartsComputed);process.exit(1)}
+const memBound=Math.max(1,Math.floor(require("os").freemem()/(256*1024*1024)));
+if(!Number.isInteger(d.workers)||d.workers<1||d.workers>12||d.workers>memBound){console.error("workers "+d.workers+" out of bounds [1..12] ∩ [1.."+memBound+"] (free-mem bound)");process.exit(1)}
+process.stdout.write(String(d.workers));
+' "$TMP/h.out" > "$TMP/h.workers"; then
+  ok "H batch-stats memory resilience: 4380 charts, sum==chartsComputed, workers=$(cat "$TMP/h.workers") (≤ free-mem bound)"; else bad "H batch-stats memory resilience"; fi
+
+echo "──── A-H: $pass passed, $fail failed"
 [ "$fail" -eq 0 ]
