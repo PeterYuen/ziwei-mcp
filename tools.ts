@@ -63,7 +63,7 @@ import { dirname as dirnameOf, join as joinPath } from 'node:path';
 export const SERVER_NAME = 'ziwei-mcp';
 // Stdio reports 0.1.0 (the Phase-1 test suite asserts it); the HTTP daemon
 // overrides to 0.2.0 via dispatch()'s serverVersion option.
-export const SERVER_VERSION = '0.3.1';
+export const SERVER_VERSION = '0.4.0';
 export const DEFAULT_PROTOCOL = '2025-06-18';
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -1979,15 +1979,54 @@ export function listTools(): Array<{ name: string; description: string; inputSch
 
 export interface RpcMessage { jsonrpc?: string; id?: number | string | null; method?: string; params?: any }
 
+/** Process-wide count of running ziwei_batch_stats jobs (HTTP daemon cap). */
+let activeBatchJobs = 0;
+
 /**
  * Handle ONE JSON-RPC message, return the response messages to emit
  * (empty array for notifications — same semantics as the Phase-1 `handle`).
  * Never throws on protocol-level problems; tool errors come back as
  * result.isError payloads so the transport survives.
+ *
+ * opts.batchSlots (v0.4.0, HTTP daemon): when set, ziwei_batch_stats is
+ * capped to this many concurrent jobs in this process — a second concurrent
+ * call returns a busy error (-32005) instead of queueing. Each batch spawns
+ * up to 12 worker threads; stacking batches OOM-kills memory-tight boxes.
+ * stdio (index.ts) never passes batchSlots, so its behaviour is unchanged.
  */
 export async function dispatch(
   req: RpcMessage,
-  opts: { serverVersion?: string } = {},
+  opts: { serverVersion?: string; batchSlots?: number } = {},
+): Promise<Record<string, unknown>[]> {
+  const id = typeof req.id === 'number' || typeof req.id === 'string' ? req.id : null;
+  const gate =
+    req.method === 'tools/call' &&
+    req.params?.name === 'ziwei_batch_stats' &&
+    typeof opts.batchSlots === 'number' &&
+    opts.batchSlots > 0;
+  if (!gate) return dispatchCore(req, opts);
+  if (activeBatchJobs >= (opts.batchSlots as number)) {
+    return [{
+      jsonrpc: '2.0',
+      id: id ?? null,
+      error: {
+        code: -32005,
+        message: `ziwei_batch_stats busy: ${activeBatchJobs} batch job(s) already running (process cap ${opts.batchSlots}); retry later`,
+        data: { retryAfterSeconds: 30 },
+      },
+    }];
+  }
+  activeBatchJobs += 1;
+  try {
+    return await dispatchCore(req, opts);
+  } finally {
+    activeBatchJobs -= 1;
+  }
+}
+
+async function dispatchCore(
+  req: RpcMessage,
+  opts: { serverVersion?: string },
 ): Promise<Record<string, unknown>[]> {
   const out: Record<string, unknown>[] = [];
   const emit = (msg: Record<string, unknown>) => out.push(msg);

@@ -31,12 +31,16 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { dispatch, SERVER_NAME, type RpcMessage } from './tools';
 
-const HTTP_VERSION = '0.3.1';
+const HTTP_VERSION = '0.4.0';
 const HOST = process.env.ZIWEI_MCP_HOST || '0.0.0.0';
 const PORT = Number(process.env.ZIWEI_MCP_PORT || process.env.PORT || 9878);
 const MAX_BODY_BYTES = 1 * 1024 * 1024; // 1 MiB — charts are ~50 KB; guard against junk floods
 const KEEPALIVE_MS = Number(process.env.ZIWEI_MCP_SSE_KEEPALIVE_MS || 20000); // spec guidance: 15–30 s
 const MAX_STREAMS = Number(process.env.ZIWEI_MCP_SSE_MAX_STREAMS || 16);      // leak guard
+// v0.4.0 hardening: per-token request budget + batch concurrency cap.
+const RATE_PER_MIN = Number(process.env.ZIWEI_MCP_RATE_PER_MIN || 30);  // sustained requests/min per token
+const RATE_BURST = Number(process.env.ZIWEI_MCP_RATE_BURST || 10);      // bucket capacity (burst allowance)
+const BATCH_SLOTS = Number(process.env.ZIWEI_MCP_BATCH_SLOTS || 1);     // concurrent ziwei_batch_stats jobs
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const TOKEN_FILE = process.env.ZIWEI_MCP_TOKEN_FILE || join(HERE, '.token');
@@ -78,6 +82,53 @@ function authorized(req: IncomingMessage, url: URL): boolean {
   const supplied = extractToken(req, url);
   if (supplied === null) return false;
   return constantTimeEqual(Buffer.from(supplied, 'utf8'), TOKEN);
+}
+
+// ── rate limiting (v0.4.0) ─────────────────────────────────────────────────
+// Per-token token bucket applied to POST /mcp (the compute path). /health is
+// exempt (liveness), SSE GET/DELETE are exempt (streams are long-lived, not
+// request volume). Buckets keyed by a hash of the supplied token so distinct
+// tokens get independent budgets and the map never grows token-shaped data.
+// ZIWEI_MCP_RATE_PER_MIN=0 disables the limiter entirely.
+interface Bucket { tokens: number; last: number }
+const buckets = new Map<string, Bucket>();
+const BUCKET_TTL_MS = 5 * 60 * 1000;   // idle buckets are pruned after 5 min
+const BUCKETS_MAX = 1024;              // hard cap on tracked tokens
+
+/** Returns null when allowed (one token consumed), else seconds to retry after. */
+function rateCheck(token: string): number | null {
+  if (RATE_PER_MIN <= 0) return null;
+  const key = createHash('sha256').update(token).digest('hex').slice(0, 32);
+  const now = Date.now();
+  let b = buckets.get(key);
+  if (!b) {
+    if (buckets.size >= BUCKETS_MAX) {
+      // Prune expired buckets oldest-first; evict the oldest as a last resort.
+      const byAge = Array.from(buckets.entries()).sort((x, y) => x[1].last - y[1].last);
+      for (const [k, v] of byAge) {
+        if (buckets.size < BUCKETS_MAX) break;
+        buckets.delete(k);
+        if (now - v.last <= BUCKET_TTL_MS) break; // evicted an active bucket, stop
+      }
+    }
+    b = { tokens: RATE_BURST, last: now };
+    buckets.set(key, b);
+  }
+  const ratePerMs = RATE_PER_MIN / 60000;
+  b.tokens = Math.min(RATE_BURST, b.tokens + (now - b.last) * ratePerMs);
+  b.last = now;
+  if (b.tokens >= 1) { b.tokens -= 1; return null; }
+  return Math.max(1, Math.ceil((1 - b.tokens) / (RATE_PER_MIN / 60)));
+}
+
+// Periodic sweep so one-shot clients' buckets don't linger. Unref'd: never
+// keeps the daemon alive.
+if (RATE_PER_MIN > 0) {
+  const sweeper = setInterval(() => {
+    const now = Date.now();
+    for (const [k, v] of buckets) if (now - v.last > BUCKET_TTL_MS) buckets.delete(k);
+  }, 60000);
+  sweeper.unref();
 }
 
 // ── response helpers ────────────────────────────────────────────────────────
@@ -175,6 +226,17 @@ async function handlePostMcp(req: IncomingMessage, res: ServerResponse, url: URL
     return;
   }
 
+  // v0.4.0: per-token budget on the compute path. Checked BEFORE reading the
+  // body so rejected floods cost nothing.
+  const supplied = extractToken(req, url) ?? '';
+  const retryAfter = rateCheck(supplied);
+  if (retryAfter !== null) {
+    log(`429 rate-limited from ${req.socket.remoteAddress} (retry after ${retryAfter}s, limit ${RATE_PER_MIN}/min)`);
+    res.setHeader('Retry-After', String(retryAfter));
+    json(res, 429, { error: 'rate limited', message: `per-token limit of ${RATE_PER_MIN} requests/min exceeded (burst ${RATE_BURST}); retry after ${retryAfter}s`, retryAfterSeconds: retryAfter });
+    return;
+  }
+
   let raw: string;
   try {
     raw = await readBody(req);
@@ -197,7 +259,11 @@ async function handlePostMcp(req: IncomingMessage, res: ServerResponse, url: URL
     try {
       // DEEP FIX 2026-11-05: dispatch is async now (batch_stats spawns its
       // compute child instead of blocking the event loop for up to 120 s).
-      responses.push(...await dispatch(m, { serverVersion: HTTP_VERSION }));
+      // v0.4.0: batchSlots enforces the process-wide ziwei_batch_stats
+      // concurrency cap — a second concurrent batch call gets an immediate
+      // busy error instead of queuing (each batch spawns up to 12 workers;
+      // stacking batches OOMs memory-tight boxes).
+      responses.push(...await dispatch(m, { serverVersion: HTTP_VERSION, batchSlots: BATCH_SLOTS }));
     } catch (e: any) {
       responses.push({ jsonrpc: '2.0', id: (m && typeof m.id === 'number' || m && typeof m.id === 'string') ? m.id : null, error: { code: -32603, message: `internal error: ${e?.message ?? e}` } });
     }

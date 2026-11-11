@@ -90,7 +90,7 @@ bash services/ziwei-mcp/tests/http-tests.sh   # 38 assertions against the live d
   (next free ≥ 9878) and logs the actual port.
 - **Auth:** `Authorization: Bearer $(cat services/ziwei-mcp/.token)` or `?token=<t>`
   query param (either accepted, constant-time compare). Missing/wrong → **401**.
-- **`GET /health`** — no auth, no chart data: `{"status":"ok","server":"ziwei-mcp","version":"0.3.1"}`.
+- **`GET /health`** — no auth, no chart data: `{"status":"ok","server":"ziwei-mcp","version":"0.4.0"}`.
 - **Transport modes (Streamable HTTP spec):**
   - **JSON response mode** (default): POST a single JSON-RPC message or a batch
     array, get `application/json` back (202 for notification-only posts).
@@ -114,6 +114,20 @@ bash services/ziwei-mcp/tests/http-tests.sh   # 38 assertions against the live d
 - **Concurrency model:** Node single-threaded event loop; chart math is synchronous CPU
   (~10–50 ms), so requests serialize naturally — no shared state, safe under any
   concurrency. 1 MiB body limit.
+- **Rate limiting (v0.4.0):** per-token token bucket on POST `/mcp` — sustained
+  `ZIWEI_MCP_RATE_PER_MIN` (default **30**) requests/min with a burst allowance of
+  `ZIWEI_MCP_RATE_BURST` (default **10**); exceeded → **429** with a `Retry-After`
+  header and a JSON-RPC-shaped error body. `/health`, SSE streams and DELETE are
+  exempt; `ZIWEI_MCP_RATE_PER_MIN=0` disables the limiter. stdio transport is
+  unaffected.
+- **Batch concurrency cap (v0.4.0):** at most `ZIWEI_MCP_BATCH_SLOTS` (default **1**)
+  `ziwei_batch_stats` jobs run concurrently in the daemon — the second concurrent
+  batch call returns JSON-RPC error `-32005` (busy, retry later) immediately
+  instead of queueing, because each batch spawns up to 12 worker threads and
+  stacking batches OOM-kills memory-tight boxes. stdio transport is unaffected.
+- **HTTPS (optional, deployment-level):** plain HTTP on `:9878` remains the
+  default. For TLS, put `tailscale serve` in front (see CONNECTING.md → HTTPS) —
+  the daemon itself does no TLS.
 
 Example remote client config (most MCP clients accept a `url` field for streamable
 HTTP instead of `command`; replace `<host>` and read the token from `.token`):
@@ -290,9 +304,15 @@ exact day and audit `lunarMonth`/`isLeapMonth` in every liuyue payload.
 ## Tests
 
 ```bash
-bash services/ziwei-mcp/tests/run-tests.sh     # stdio A-G, 9/9 (E = all-tools batch, F = bugfix/feature regression incl. 2026-11-05 unified straddle rule, G = 2026-11-05 deep-fix suite: mirror cross-check, jiFlags, lunarMonth four-path table, bounds, day-shift, ignoredKeys)
+bash services/ziwei-mcp/tests/run-tests.sh     # stdio A-I, 15/15 (E = all-tools batch, F = bugfix/feature regression incl. 2026-11-05 unified straddle rule, G = 2026-11-05 deep-fix suite: mirror cross-check, jiFlags, lunarMonth four-path table, bounds, day-shift, ignoredKeys, H = batch-stats memory resilience, I = v0.4.0 rate limiting + batch concurrency on a dedicated daemon, port 9879)
 bash services/ziwei-mcp/tests/http-tests.sh    # HTTP: auth, protocol, batch, gold, SSE, all tools + 2026-11-04/05 assertions (38)
 ```
+
+CI runs both suites on every push/PR (`.github/workflows/ci.yml`; engine
+checked out at the pinned commit). Section I's batch calls use a small
+single-year, single-hour variant (seconds per call); section H keeps the
+full 4380-chart 1950 census even in CI — it costs ≈1 min on a runner and
+exercises the real free-memory clamp, so no smaller variant is gated.
 
 Gold anchors (all in-repo, self-contained): `tests/gold/chart-1986.json` (ziwei_chart
 byte-identity; chart object must never change) and `tests/gold/render-default-1986.svg`
@@ -308,6 +328,24 @@ person's: `1986-12-08 23:45 male lon 114.2` → effective `1986-12-09`, pillars
 Canonical dated changelog: **[CHANGES.md](CHANGES.md)** (keep-a-changelog
 format, newest first). The per-release notes below are the detailed narrative
 entries.
+
+## Changelog — 2026-11-11 (v0.4.0: hardening — rate limiting, batch cap, CI)
+
+**Per-token rate limiting** — POST `/mcp` is now budgeted per bearer token:
+`ZIWEI_MCP_RATE_PER_MIN` (default 30) sustained, `ZIWEI_MCP_RATE_BURST`
+(default 10) burst, bucket keyed by a hash of the token. Over budget → HTTP
+429 with `Retry-After`. `/health`, SSE streams, and DELETE are exempt;
+stdio is untouched. **`ziwei_batch_stats` concurrency cap** — process-wide
+slot limit (`ZIWEI_MCP_BATCH_SLOTS`, default 1): a second concurrent batch
+call gets JSON-RPC `-32005` busy immediately instead of queueing (two
+12-worker batches co-resident OOM a 6 GB box). **CI** —
+`.github/workflows/ci.yml` runs the full stdio suite (A–I) on push/PR,
+cloning the vendored engine at the pinned commit. **HTTPS docs** —
+CONNECTING.md now documents `tailscale serve` TLS termination.
+Test suite extended with section I (live rate-limit + batch-cap behaviour);
+gold `ziwei_chart` output unchanged (byte-identical).
+
+**Version:** both transports **0.4.0**.
 
 ## Changelog — 2026-11-11 (v0.3.1: batch-stats OOM hardening)
 

@@ -5,6 +5,71 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); dates and
 versions newest first. Version numbers apply to both transports (stdio and
 Streamable HTTP) unless noted.
 
+## 2026-11-11 — v0.4.0
+
+### Added
+- **Per-token rate limiting (HTTP daemon)** — POST `/mcp` is budgeted per
+  bearer token with a token bucket: `ZIWEI_MCP_RATE_PER_MIN` (default 30)
+  sustained requests/min, `ZIWEI_MCP_RATE_BURST` (default 10) burst
+  allowance. Over budget → HTTP **429** with `Retry-After` header and a
+  JSON-RPC-shaped error body. `/health`, SSE streams, and DELETE are
+  exempt; `ZIWEI_MCP_RATE_PER_MIN=0` disables the limiter. Buckets are keyed
+  by a SHA-256 hash of the token (no token material in memory), capped at
+  1024 tracked tokens, swept after 5 min idle. The stdio transport is
+  unaffected (no limiter, no slots).
+- **`ziwei_batch_stats` concurrency cap** — process-wide slot limit
+  `ZIWEI_MCP_BATCH_SLOTS` (default 1): while a batch job runs, a second
+  concurrent call returns JSON-RPC `-32005` (`ziwei_batch_stats busy`,
+  `data.retryAfterSeconds: 30`) immediately instead of queueing. Each batch
+  spawns up to 12 worker threads; two co-resident batches OOM a 6 GB box.
+  Implemented as a gate in `dispatch()` (`tools.ts`), passed only by
+  `http.ts` — stdio behaviour unchanged.
+- **CI** — `.github/workflows/ci.yml`: on every push/PR, Node 22, fetch the
+  vendored engine at the pinned commit `906bd93f…` (direct-SHA fetch; the
+  pin is not reachable from any upstream branch tip), `npm install`, then
+  run `tests/run-tests.sh` (A–I) plus `tests/http-tests.sh` against a
+  throwaway daemon on port 9879.
+- **HTTPS documentation** — CONNECTING.md documents TLS termination via
+  `tailscale serve` (`tailscale serve --bg 9878` →
+  `https://<machine>.<tailnet>.ts.net/mcp`, auto-cert, token still required,
+  SSE passes through). Plain HTTP on `:9878` remains the default; the daemon
+  itself does no TLS.
+- **Test section I** (run-tests.sh) — live behaviour of both features on a
+  dedicated daemon (port 9879; the live service is never touched): 11-request
+  burst at 30/min → exactly 10×200 + 1×429 with `Retry-After`; recovery
+  after the refill window; two concurrent `ziwei_batch_stats` → second gets
+  `-32005` busy (not queued), first completes, slot released afterwards.
+- `tests/http-tests.sh`: `BASE` env override + single automatic retry on
+  429 (the suite is a burst client; rate-limited ≠ broken).
+
+### Changed
+- Version bump 0.3.1 → **0.4.0** (both transports; `tools/list` and
+  `GET /health` bodies unchanged otherwise).
+
+### Test results
+
+Suite `tests/run-tests.sh` (A–I) + `tests/http-tests.sh` run 2026-11-11
+23:16–23:25 HKT on the production box (node v26.12.1; `free -m` available
+≈ 1234 MB — memory pressure still present, H clamp active at workers=2;
+section I daemon on port 9879, HTTP suite against a throwaway daemon on
+9879; the live systemd service on 9878 was never restarted or touched):
+
+| Section | Result |
+|---|---|
+| A protocol | PASS |
+| B reference chart (gold) | PASS |
+| C layers | PASS |
+| D robustness | PASS |
+| E new tools | PASS |
+| F bugfix+feature regression | PASS |
+| G deep-fix regression | PASS |
+| H batch-stats memory resilience | PASS |
+| I rate limiting + batch concurrency | PASS |
+| HTTP suite (fresh daemon, 9879) | PASS |
+
+Gold `ziwei_chart` output byte-identical to main-tip 95aa1fa (`cmp` of the
+tools/call response line; only the `initialize` serverInfo version differs).
+
 ## 2026-11-11 — v0.3.1
 
 ### Fixed

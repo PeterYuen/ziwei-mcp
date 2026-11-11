@@ -9,7 +9,8 @@ WS="${WS:-$(cd "$HERE/../.." && pwd)}"
 TSX="$WS/vendor/ziwei-doushu/node_modules/.bin/tsx"
 SRV="$WS/services/ziwei-mcp/index.ts"
 TMP="$(mktemp -d "${TMPDIR:-/tmp}/ziwei-mcp-tests.XXXXXX")"
-trap 'rm -rf "$TMP"' EXIT
+DAEMON_PID=""
+trap 'kill "$DAEMON_PID" 2>/dev/null; rm -rf "$TMP"' EXIT
 mkdir -p "$TMP"
 pass=0; fail=0
 ok()   { echo "PASS: $1"; pass=$((pass+1)); }
@@ -28,7 +29,7 @@ if node -e '
 const fs=require("fs");
 const L=fs.readFileSync(process.argv[1],"utf8").trim().split("\n").map(JSON.parse);
 const init=L.find(x=>x.id===1).result;
-if(init.serverInfo.name!=="ziwei-mcp"||init.serverInfo.version!=="0.3.1")process.exit(1);
+if(init.serverInfo.name!=="ziwei-mcp"||init.serverInfo.version!=="0.4.0")process.exit(1);
 if(init.protocolVersion!=="2025-06-18")process.exit(1);
 if(!init.capabilities.tools)process.exit(1);
 const tl=L.find(x=>x.id===2).result.tools;
@@ -492,4 +493,76 @@ process.stdout.write(String(d.workers));
   ok "H batch-stats memory resilience: 4380 charts, sum==chartsComputed, workers=$(cat "$TMP/h.workers") (≤ free-mem bound)"; else bad "H batch-stats memory resilience"; fi
 
 echo "──── A-H: $pass passed, $fail failed"
+
+# ── I: HTTP hardening (2026-11-11 v0.4.0): rate limiting + batch concurrency ─
+# Spawns a DEDICATED daemon on port 9879 (override: ZIWEI_MCP_PORT) — the live
+# systemd service on 9878 is never touched. Rate limiting is per-token, so the
+# burst test needs a freshly started daemon (empty buckets); if the port is
+# already serving we fail fast rather than silently bind-shift (listenWithFallback
+# would land the daemon on 9880 and the assertions would hit the wrong server).
+I_PORT="${ZIWEI_MCP_PORT:-9879}"
+# .token is gitignored — in fresh checkouts (CI) mint a throwaway token file.
+if [ -f "$HERE/.token" ]; then TOK="$(cat "$HERE/.token")"; else
+  TOK="$(head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n')"; fi
+TOKFILE="$TMP/.token"; printf '%s' "$TOK" > "$TOKFILE"; chmod 600 "$TOKFILE"
+IBASE="http://127.0.0.1:$I_PORT"
+if curl -sf "$IBASE/health" >/dev/null 2>&1; then
+  bad "I daemon: port $I_PORT already in use (refusing to test against a foreign daemon)"
+else
+  ZIWEI_MCP_PORT="$I_PORT" ZIWEI_MCP_HOST=127.0.0.1 ZIWEI_MCP_TOKEN_FILE="$TOKFILE" \
+    ZIWEI_MCP_RATE_PER_MIN="${ZIWEI_MCP_RATE_PER_MIN:-30}" ZIWEI_MCP_RATE_BURST="${ZIWEI_MCP_RATE_BURST:-10}" \
+    "$TSX" "$WS/services/ziwei-mcp/http.ts" > "$TMP/i.daemon.log" 2>&1 &
+  DAEMON_PID=$!
+  for _ in $(seq 1 300); do curl -sf "$IBASE/health" >/dev/null 2>&1 && break; sleep 0.1; done
+  if curl -sf "$IBASE/health" >/dev/null 2>&1; then
+    # I1: burst 11 pings at 30/min burst-10 → ten 200s + exactly one 429 with
+    # Retry-After. (Bucket starts full at burst=10; the 11th sees <1 token.)
+    N200=0; N429=0; RA_HDR=""
+    for i in $(seq 1 11); do
+      C=$(curl -s -o "$TMP/i.r$i" -D "$TMP/i.h$i" -w '%{http_code}' -X POST "$IBASE/mcp" \
+          -H "Authorization: Bearer $TOK" -H 'Content-Type: application/json' \
+          -d '{"jsonrpc":"2.0","id":1,"method":"ping"}')
+      [ "$C" = 200 ] && N200=$((N200+1))
+      if [ "$C" = 429 ]; then N429=$((N429+1)); RA_HDR="$(grep -i '^retry-after:' "$TMP/i.h$i" | head -1 | tr -d '\r' | awk '{print $2}')"; fi
+    done
+    if [ "$N200" -eq 10 ] && [ "$N429" -eq 1 ] && [ -n "$RA_HDR" ] && [ "$RA_HDR" -ge 1 ] 2>/dev/null \
+       && grep -q '"error":"rate limited"' "$TMP/i.r11" 2>/dev/null; then
+      ok "I1 rate limit: 11-burst → 10x200 + 1x429 (Retry-After: ${RA_HDR}s)"
+    else
+      bad "I1 rate limit (200=$N200 expected 10, 429=$N429 expected 1, Retry-After='$RA_HDR')"
+    fi
+    # I2: recovery — wait past the refill window (30/min = 1 token per 2 s),
+    # then the very next request must succeed again.
+    sleep 4
+    C=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$IBASE/mcp" \
+        -H "Authorization: Bearer $TOK" -H 'Content-Type: application/json' \
+        -d '{"jsonrpc":"2.0","id":1,"method":"ping"}')
+    [ "$C" = 200 ] && ok "I2 rate limit recovery: 200 after ${RA_HDR}s window (waited 4 s)" || bad "I2 rate limit recovery (got $C, expected 200)"
+    # I3: batch concurrency cap — two concurrent ziwei_batch_stats calls; the
+    # second must get an immediate JSON-RPC busy error (-32005), NOT a queue.
+    # Small batch (single hour, 1950, cap 100) keeps it fast; tokens refilled
+    # during the wait so neither call is rate-limited.
+    sleep 6
+    BATCH='{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"ziwei_batch_stats","arguments":{"question":"wuxingJu-distribution","gender":"male","yearFrom":1950,"yearTo":1950,"hours":[6],"maxCharts":100}}}'
+    curl -s -X POST "$IBASE/mcp" -H "Authorization: Bearer $TOK" -H 'Content-Type: application/json' --data-binary "$BATCH" > "$TMP/i.a" 2>/dev/null &
+    APID=$!
+    sleep 0.4
+    curl -s -X POST "$IBASE/mcp" -H "Authorization: Bearer $TOK" -H 'Content-Type: application/json' --data-binary "$BATCH" > "$TMP/i.b" 2>/dev/null
+    wait "$APID" 2>/dev/null
+    grep -q '\-32005' "$TMP/i.b" && grep -q 'busy' "$TMP/i.b" \
+      && ok "I3a batch concurrency: second concurrent batch rejected busy(-32005), not queued" \
+      || bad "I3a batch concurrency (second call: $(head -c 150 "$TMP/i.b"))"
+    grep -q 'chartsComputed' "$TMP/i.a" && ! grep -q '"isError":true' "$TMP/i.a" \
+      && ok "I3b batch concurrency: first call completed normally" || bad "I3b first batch call failed"
+    # I3c: slot released — a third call after the first finished must succeed.
+    curl -s -X POST "$IBASE/mcp" -H "Authorization: Bearer $TOK" -H 'Content-Type: application/json' --data-binary "$BATCH" > "$TMP/i.c" 2>/dev/null
+    grep -q 'chartsComputed' "$TMP/i.c" && ! grep -q '"isError":true' "$TMP/i.c" && ! grep -q '\-32005' "$TMP/i.c" \
+      && ok "I3c batch concurrency: slot released after completion (third call ok)" || bad "I3c slot not released"
+  else
+    bad "I daemon failed to start on :$I_PORT (see log: $(tail -2 "$TMP/i.daemon.log" 2>/dev/null | head -1))"
+  fi
+  kill "$DAEMON_PID" 2>/dev/null; wait "$DAEMON_PID" 2>/dev/null
+fi
+
+echo "──── A-I: $pass passed, $fail failed"
 [ "$fail" -eq 0 ]

@@ -5,19 +5,36 @@ set -u
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 WS="${WS:-$(cd "$HERE/../.." && pwd)}"
 TOK="$(cat "$HERE/.token")"
-BASE="http://127.0.0.1:9878"
+BASE="${BASE:-http://127.0.0.1:9878}"
 pass=0; fail=0
 ok()  { echo "PASS: $1"; pass=$((pass+1)); }
 bad() { echo "FAIL: $1"; fail=$((fail+1)); }
 code() { curl -s -o /dev/null -w '%{http_code}' "$@"; }
-post() { curl -s -X POST "$1" -H "Authorization: Bearer $TOK" -H 'Content-Type: application/json' --data-binary @- <<EOF
+# v0.4.0: the daemon enforces a per-token 30 req/min budget (burst 10). This
+# suite is a burst client by nature — retry once after the advertised
+# Retry-After window instead of failing a test that is rate-limited, not
+# broken. Set ZIWEI_MCP_RATE_PER_MIN=0 on the daemon to disable entirely.
+post() {
+  local out code body
+  out=$(curl -s -w '\n%{http_code}' -X POST "$1" -H "Authorization: Bearer $TOK" -H 'Content-Type: application/json' --data-binary @- <<EOF
 $2
 EOF
+)
+  code="${out##*$'\n'}"; body="${out%$'\n'*}"
+  if [ "$code" = 429 ]; then
+    sleep 3
+    out=$(curl -s -w '\n%{http_code}' -X POST "$1" -H "Authorization: Bearer $TOK" -H 'Content-Type: application/json' --data-binary @- <<EOF
+$2
+EOF
+)
+    code="${out##*$'\n'}"; body="${out%$'\n'*}"
+  fi
+  printf '%s' "$body"
 }
 
 # 1. health without auth
 [ "$(code "$BASE/health")" = 200 ] && ok "health 200 no-auth" || bad "health"
-curl -s "$BASE/health" | grep -q '"status":"ok"' && curl -s "$BASE/health" | grep -q '"version":"0.3.1"' && ok "health body" || bad "health body"
+curl -s "$BASE/health" | grep -q '"status":"ok"' && curl -s "$BASE/health" | grep -q '"version":"0.4.0"' && ok "health body" || bad "health body"
 
 # 2. auth rejection
 [ "$(code -X POST "$BASE/mcp" -H 'Content-Type: application/json' -d '{}')" = 401 ] && ok "no-token 401" || bad "no-token 401"
@@ -25,7 +42,7 @@ curl -s "$BASE/health" | grep -q '"status":"ok"' && curl -s "$BASE/health" | gre
 
 # 3. protocol over HTTP
 R=$(post "$BASE/mcp" '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"t","version":"0"}}}')
-echo "$R" | grep -q '"serverInfo"' && echo "$R" | grep -q '"version":"0.3.1"' && ok "initialize" || bad "initialize"
+echo "$R" | grep -q '"serverInfo"' && echo "$R" | grep -q '"version":"0.4.0"' && ok "initialize" || bad "initialize"
 R=$(post "$BASE/mcp" '{"jsonrpc":"2.0","id":2,"method":"tools/list"}')
 echo "$R" | grep -q ziwei_chart && echo "$R" | grep -q ziwei_sihua_layers && ok "tools/list" || bad "tools/list"
 [ "$(code -X POST "$BASE/mcp" -H "Authorization: Bearer $TOK" -H 'Content-Type: application/json' -d '[{"jsonrpc":"2.0","id":1,"method":"ping"},{"jsonrpc":"2.0","id":2,"method":"ping"}]')" = 200 ] && ok "batch 200" || bad "batch"

@@ -1,0 +1,67 @@
+# ziwei-mcp CI — runs the regression suites on push/PR.
+#
+# The suites expect the production layout:
+#   <ws>/services/ziwei-mcp/   (this repository)
+#   <ws>/vendor/ziwei-doushu/  (engine @ pinned commit, npm deps installed)
+# so the checkout lands in services/ziwei-mcp and the engine in vendor/.
+#
+# Engine pin: 906bd93fe48ac9aa299c97a5dd5ecf3eed477e5e — update BOTH the SHA
+# below and the pin notes in README.md/CONNECTING.md when bumping.
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: services/ziwei-mcp
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Check out vendored engine (pinned 906bd93)
+        # The pin is a commit not reachable from any upstream branch tip
+        # (fork-side fix between upstream commits), so plain checkout of the
+        # SHA fails; fetch the SHA explicitly. Verified locally 2026-11-11.
+        run: |
+          mkdir -p vendor/ziwei-doushu
+          cd vendor/ziwei-doushu
+          git init -q .
+          git remote add origin https://github.com/Renhuai123/ziwei-doushu.git
+          git fetch -q --depth 1 origin 906bd93fe48ac9aa299c97a5dd5ecf3eed477e5e
+          git checkout -q FETCH_HEAD
+          test -f lib/ziwei/algorithm.ts
+
+      - name: Install engine dependencies
+        run: npm install --no-audit --no-fund
+        working-directory: vendor/ziwei-doushu
+
+      - name: Run stdio test suite (A–I)
+        run: bash services/ziwei-mcp/tests/run-tests.sh
+
+      - name: Run HTTP test suite against a throwaway daemon (port 9879)
+        run: |
+          # http-tests.sh targets a running daemon; mint a throwaway token,
+          # start one on 9879, point BASE at it. Rate limiting runs at
+          # production defaults in run-tests.sh section I; here the daemon is
+          # permissive so the suite's burst of ~25 POSTs (incl. code()-style
+          # checks that cannot retry) is not throttled into false failures.
+          printf '%s' "$(head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n')" > services/ziwei-mcp/.token
+          chmod 600 services/ziwei-mcp/.token
+          ZIWEI_MCP_PORT=9879 ZIWEI_MCP_HOST=127.0.0.1 ZIWEI_MCP_RATE_PER_MIN=100000 ZIWEI_MCP_RATE_BURST=100000 \
+            vendor/ziwei-doushu/node_modules/.bin/tsx services/ziwei-mcp/http.ts \
+            > daemon.log 2>&1 &
+          echo $! > daemon.pid
+          for i in $(seq 1 300); do curl -sf http://127.0.0.1:9879/health && break; sleep 0.1; done
+          BASE=http://127.0.0.1:9879 bash services/ziwei-mcp/tests/http-tests.sh
+          kill "$(cat daemon.pid)" 2>/dev/null || true
+          cat daemon.log

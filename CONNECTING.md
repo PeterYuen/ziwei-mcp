@@ -1,8 +1,8 @@
 # ziwei-mcp — Connection Info (for testing in other systems)
 
 **Server:** ziwei-mcp · two transports:
-- **stdio** v0.3.1 (Phase 1) — local processes only
-- **Streamable HTTP** v0.3.1 (Phase 2) — LAN/remote via URL, bearer-token
+- **stdio** v0.4.0 (Phase 1) — local processes only
+- **Streamable HTTP** v0.4.0 (Phase 2) — LAN/remote via URL, bearer-token
 
 **Engine:** vendored ziwei-doushu @ `906bd93` (engine @ upstream 21114e3 + true-solar longitude fix) (MIT, upstream github.com/Renhuai123/ziwei-doushu)
 Both transports share one implementation module (`tools.ts`) — identical tool behaviour.
@@ -12,7 +12,7 @@ Both transports share one implementation module (`tools.ts`) — identical tool 
 **URL:** `http://<host>:9878/mcp` (the daemon binds 0.0.0.0 — remote clients use the host's own LAN address)
 **Token:** read `services/ziwei-mcp/.token` on the server host (chmod 600) — send it as
 `Authorization: Bearer <token>` or `?token=<token>` (either accepted). Missing/wrong → 401.
-**Health:** `GET /health` (no auth) → `{"status":"ok","server":"ziwei-mcp","version":"0.3.1"}`
+**Health:** `GET /health` (no auth) → `{"status":"ok","server":"ziwei-mcp","version":"0.4.0"}`
 **Service:** `systemctl --user {start,restart,status} ziwei-mcp` (enabled at boot, Linger=yes)
 
 ### Remote client config (streamable HTTP — most MCP clients accept `url`)
@@ -44,7 +44,7 @@ curl -s -X POST http://127.0.0.1:9878/mcp \
   -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"probe","version":"1"}}}'
 ```
 
-Expected: `serverInfo` `ziwei-mcp/0.3.1`, then `tools/list` returns all ten tools.
+Expected: `serverInfo` `ziwei-mcp/0.4.0`, then `tools/list` returns all ten tools.
 
 ### HTTP protocol details
 
@@ -64,6 +64,15 @@ Expected: `serverInfo` `ziwei-mcp/0.3.1`, then `tools/list` returns all ten tool
   `result.isError:true` (protocol survives); malformed body → `-32700`.
 - 1 MiB request-size limit. Stateless — no per-session state, nothing stored;
   session ids exist only to address an open stream for DELETE.
+- **Rate limiting (v0.4.0):** POST `/mcp` is budgeted per bearer token —
+  `ZIWEI_MCP_RATE_PER_MIN` (default 30) sustained / `ZIWEI_MCP_RATE_BURST`
+  (default 10) burst; over budget → **429** with `Retry-After` header and
+  `{"error":"rate limited",…}` body. `/health`, SSE `GET /mcp`, and `DELETE`
+  are exempt. Set `ZIWEI_MCP_RATE_PER_MIN=0` to disable.
+- **Batch concurrency cap (v0.4.0):** at most `ZIWEI_MCP_BATCH_SLOTS` (default
+  1) concurrent `ziwei_batch_stats` jobs per daemon process; a second
+  concurrent call fails fast with JSON-RPC `-32005` (`ziwei_batch_stats busy`,
+  `data.retryAfterSeconds: 30`) instead of queueing.
 
 ```bash
 # open the SSE stream (Ctrl-C to close; or DELETE /mcp with the session id)
@@ -73,6 +82,34 @@ curl -sN http://127.0.0.1:9878/mcp \
 #   : ziwei-mcp SSE stream open (keep-alive every 20s)
 #   : ping 2026-11-01T07:20:00.000Z
 ```
+
+## HTTPS via `tailscale serve` (v0.4.0 docs — deployment config, not code)
+
+The daemon itself speaks **plain HTTP on `:9878`** (the default; nothing
+changes). When you need TLS — e.g. a client host that refuses `http://` MCP
+endpoints, or traffic that leaves the trusted LAN — terminate TLS with
+[Tailscale Serve](https://tailscale.com/kb/1312/serve) on the server host;
+no code, config, or restart changes are required:
+
+```bash
+# on the server host (tailscaled running, host in the tailnet):
+tailscale serve --bg 9878        # proxy 127.0.0.1:9878 over HTTPS
+tailscale serve status           # confirm the proxy is registered
+```
+
+- **HTTPS URL:** `https://<machine>.<tailnet>.ts.net/mcp` — certificate is
+  issued and renewed automatically by Tailscale (no Let's Encrypt / DNS work).
+- **Auth is unchanged:** the bearer token is still required on every `/mcp`
+  request (`Authorization: Bearer <token>` or `?token=<token>`); Serve only
+  adds TLS. `GET /health` stays token-free.
+- **SSE works through Serve** (same `GET /mcp` + `Accept: text/event-stream`);
+  Serve streams, it does not buffer.
+- **Tailnet-only reach:** Serve listens on the tailnet interface only — the
+  LAN stays unaffected, and the plain-HTTP `:9878` keeps serving LAN clients
+  in parallel.
+- **Rate limiting is unaffected:** Serve forwards the client identity as it
+  received it; the per-token bucket counts per token as documented above.
+- To undo: `tailscale serve reset`.
 
 ## Phase 1: stdio (local processes)
 
@@ -289,7 +326,7 @@ printf '%s\n' \
      <repo-root>/services/ziwei-mcp/index.ts
 ```
 
-Expected: line 1 = initialize result (serverInfo `ziwei-mcp/0.3.1`), line 3 = both tools with schemas.
+Expected: line 1 = initialize result (serverInfo `ziwei-mcp/0.4.0`), line 3 = both tools with schemas.
 
 ## Gold-standard assertion (use this to verify your client wired correctly — same on both transports)
 
@@ -306,11 +343,15 @@ stem **丙** · 祿 天同→命宮 · 權 天機→官禄 · 科 文昌→夫�
   server-push stream (20 s keep-alive pings, session-id addressing via DELETE).
   The stream carries no JSON-RPC traffic because our tools are request/response
   only — it satisfies clients that require an open stream to connect.
-- Token travels in cleartext HTTP — trust the LAN boundary only; do not expose port
-  9878 beyond it (no TLS termination here by design).
+- Token travels in cleartext HTTP on the default `:9878` — trust the LAN
+  boundary only; do not expose port 9878 beyond it. For TLS, front the daemon
+  with `tailscale serve` (see the HTTPS section above) — still token-gated.
 - Birth data is passed per call and never stored server-side (stateless by design).
 - Known engine conventions preserved: no China-DST auto-correction 1935–1991; leap-month liuyue uses base-month stem.
-- Test suites: `tests/run-tests.sh` (stdio A–G, 9/9 PASS) · `tests/http-tests.sh` (38/38 PASS against the live daemon, incl. SSE).
+- Test suites: `tests/run-tests.sh` (stdio A–I — section I exercises rate
+  limiting + batch concurrency on a dedicated daemon, port 9879; the live
+  service is never touched) · `tests/http-tests.sh` (38/38 PASS against the
+  live daemon, incl. SSE; v0.4.0-aware: retries once on 429).
 
 ## Changelog — 2026-11-05 07:45 (deep-review fixes — read if you integrate)
 

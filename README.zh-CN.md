@@ -90,7 +90,7 @@ bash services/ziwei-mcp/tests/http-tests.sh   # 对线上 daemon 的 38 项断�
   （取 ≥ 9878 的下一个空埠）并在 log 中记录实际 port。
 - **Auth：** `Authorization: Bearer *** services/ziwei-mcp/.token)` 或 `?token=***<t>`
   query param（两者皆可，常数时间比对）。缺少／错误 → **401**。
-- **`GET /health`** — 无需 auth、不含命盘资料：`{"status":"ok","server":"ziwei-mcp","version":"0.3.1"}`。
+- **`GET /health`** — 无需 auth、不含命盘资料：`{"status":"ok","server":"ziwei-mcp","version":"0.4.0"}`。
 - **Transport 模式（Streamable HTTP 规范）：**
   - **JSON 回应模式**（预设）：POST 单一 JSON-RPC 讯息或批次阵列，
     取回 `application/json`（仅通知的 POST 回 202）。
@@ -112,6 +112,19 @@ bash services/ziwei-mcp/tests/http-tests.sh   # 对线上 daemon 的 38 项断�
     必须保持连线才能接驳、且具备 push 能力的 MCP 客户端。
 - **并发模型：** Node 单执行绪 event loop；排盘运算为同步 CPU（约 10–50 ms），
   请求自然串行 —— 无共享状态，任何并发下都安全。body 上限 1 MiB。
+- **速率限制（v0.4.0）：** POST `/mcp` 按 token 以 token-bucket 计费 —— 持续
+  `ZIWEI_MCP_RATE_PER_MIN`（预设 **30**）req/min，突发容许
+  `ZIWEI_MCP_RATE_BURST`（预设 **10**）；超额 → **429** 附 `Retry-After`
+  标头与 JSON-RPC 错误体。`/health`、SSE 串流与 DELETE 不计入；
+  `ZIWEI_MCP_RATE_PER_MIN=0` 可完全关闭。stdio transport 不受影响。
+- **批次并发上限（v0.4.0）：** daemon 内同时执行的 `ziwei_batch_stats` 作业
+  不得超过 `ZIWEI_MCP_BATCH_SLOTS`（预设 **1**）—— 第二个并发的批次呼叫
+  立即取得 JSON-RPC `-32005`（busy，稍后重试）而非排队，因为每个批次最多
+  生成 12 个 worker 执行绪，堆叠批次会把内存紧张的主机 OOM 杀死。
+  stdio transport 不受影响。
+- **HTTPS（选用，部署层）：** `:9878` 上的纯 HTTP 仍为预设。若要 TLS，
+  可于前方加上 `tailscale serve`（见 CONNECTING.md → HTTPS）——
+  daemon 本身不做 TLS。
 
 远端客户端设定范例（多数 MCP 客户端接受以 `url` 栏位取代 `command` 来接
 streamable HTTP；请代换 `<host>` 并从 `.token` 读取 token）：
@@ -281,7 +294,7 @@ streamable HTTP；请代换 `<host>` 并从 `.token` 读取 token）：
 ## 测试
 
 ```bash
-bash services/ziwei-mcp/tests/run-tests.sh     # stdio A-G，9/9（E = 全工具批次，F = bugfix/feature 回归含 2026-11-05 统一跨段规则，G = 2026-11-05 深度修正套件：镜射交叉检查、jiFlags、lunarMonth 四路径表、边界、日位移、ignoredKeys）
+bash services/ziwei-mcp/tests/run-tests.sh     # stdio A-I，15/15（E = 全工具批次，F = bugfix/feature 回归含 2026-11-05 统一跨段规则，G = 2026-11-05 深度修正套件：镜射交叉检查、jiFlags、lunarMonth 四路径表、边界、日位移、ignoredKeys，H = batch-stats 内存加固，I = v0.4.0 速率限制＋批次并发（专用 daemon，port 9879））
 bash services/ziwei-mcp/tests/http-tests.sh    # HTTP：auth、protocol、batch、gold、SSE、全部工具 + 2026-11-04/05 断言（38）
 ```
 
@@ -298,6 +311,23 @@ bash services/ziwei-mcp/tests/http-tests.sh    # HTTP：auth、protocol、batch�
 
 正式日期式变更记录见 **[CHANGES.md](CHANGES.md)**（Keep a Changelog 格式，最新在上）。
 以下逐段为各版本的详细叙述性记录。
+
+## 变更记录 —— 2026-11-11（v0.4.0：加固 —— 速率限制、批次上限、CI）
+
+**按 token 的速率限制** —— POST `/mcp` 现按 bearer token 计费：持续
+`ZIWEI_MCP_RATE_PER_MIN`（预设 30）req/min，突发容许
+`ZIWEI_MCP_RATE_BURST`（预设 10），bucket 以 token 杂凑为键。超额 → HTTP
+429 附 `Retry-After`。`/health`、SSE 串流与 DELETE 不计入；stdio 不受
+影响。**`ziwei_batch_stats` 并发上限** —— 行程内 slot 限流
+（`ZIWEI_MCP_BATCH_SLOTS`，预设 1）：第二个并发批次呼叫立即取得
+JSON-RPC `-32005` busy 而非排队（两个 12-worker 批次并存会把 6 GB
+主机 OOM 杀死）。**CI** —— `.github/workflows/ci.yml` 于 push/PR 执行
+完整 stdio 测试组（A–I），并依 pin 的 commit 克隆 vendored 引擎。
+**HTTPS 文件** —— CONNECTING.md 新增 `tailscale serve` TLS 终止说明。
+测试组新增章节 I（线上速率限制与批次上限行为）；黄金 `ziwei_chart`
+输出不变（字节相同）。
+
+**版本：** 两个 transport 均为 **0.4.0**。
 
 ## 变更记录 —— 2026-11-11（v0.3.1：batch-stats OOM 加固）
 
