@@ -1,4 +1,4 @@
-# ziwei-mcp — Ziwei Doushu MCP server (Phase 1 stdio + Phase 2 HTTP)
+# ziwei-mcp — Ziwei Doushu MCP server
 
 > 🌐 **English** | [繁體中文](README.zh-TW.md) | [简体中文](README.zh-CN.md)
 
