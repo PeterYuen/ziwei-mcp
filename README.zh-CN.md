@@ -90,7 +90,7 @@ bash services/ziwei-mcp/tests/http-tests.sh   # 对线上 daemon 的 38 项断�
   （取 ≥ 9878 的下一个空埠）并在 log 中记录实际 port。
 - **Auth：** `Authorization: Bearer *** services/ziwei-mcp/.token)` 或 `?token=***<t>`
   query param（两者皆可，常数时间比对）。缺少／错误 → **401**。
-- **`GET /health`** — 无需 auth、不含命盘资料：`{"status":"ok","server":"ziwei-mcp","version":"0.3.0"}`。
+- **`GET /health`** — 无需 auth、不含命盘资料：`{"status":"ok","server":"ziwei-mcp","version":"0.3.1"}`。
 - **Transport 模式（Streamable HTTP 规范）：**
   - **JSON 回应模式**（预设）：POST 单一 JSON-RPC 讯息或批次阵列，
     取回 `application/json`（仅通知的 POST 回 202）。
@@ -298,6 +298,17 @@ bash services/ziwei-mcp/tests/http-tests.sh    # HTTP：auth、protocol、batch�
 
 正式日期式变更记录见 **[CHANGES.md](CHANGES.md)**（Keep a Changelog 格式，最新在上）。
 以下逐段为各版本的详细叙述性记录。
+
+## 变更记录 —— 2026-11-11（v0.3.1：batch-stats OOM 加固）
+
+**`ziwei_batch_stats` 内存限幅** —— 批量工作进程原先最多并行 12 个线程，
+各自加载引擎与农历表；在内存紧张的主机上，内核 oom-killer 会杀死子进程
+（exit 137），而工具将其掩盖为 120 秒超时。现按可用内存（`freemem()`，
+约每工作进程 512 MB）连同 CPU 并行度一并限幅工作进程数，OOM 被杀时以
+明确的 `killed by SIGKILL (likely OOM …)` 错误呈现并载明启动时可用内存。
+新增测试章节 H 覆盖此回归。黄金 `ziwei_chart` 输出不变（字节相同）。
+
+**版本：** 两个 transport 均为 **0.3.1**。
 
 ## 变更记录 —— 2026-11-10（格局批次：`ziwei_patterns` 工具 ＋ `leapMonth` 参数）
 

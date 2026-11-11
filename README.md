@@ -90,7 +90,7 @@ bash services/ziwei-mcp/tests/http-tests.sh   # 38 assertions against the live d
   (next free ≥ 9878) and logs the actual port.
 - **Auth:** `Authorization: Bearer $(cat services/ziwei-mcp/.token)` or `?token=<t>`
   query param (either accepted, constant-time compare). Missing/wrong → **401**.
-- **`GET /health`** — no auth, no chart data: `{"status":"ok","server":"ziwei-mcp","version":"0.3.0"}`.
+- **`GET /health`** — no auth, no chart data: `{"status":"ok","server":"ziwei-mcp","version":"0.3.1"}`.
 - **Transport modes (Streamable HTTP spec):**
   - **JSON response mode** (default): POST a single JSON-RPC message or a batch
     array, get `application/json` back (202 for notification-only posts).
@@ -308,6 +308,19 @@ person's: `1986-12-08 23:45 male lon 114.2` → effective `1986-12-09`, pillars
 Canonical dated changelog: **[CHANGES.md](CHANGES.md)** (keep-a-changelog
 format, newest first). The per-release notes below are the detailed narrative
 entries.
+
+## Changelog — 2026-11-11 (v0.3.1: batch-stats OOM hardening)
+
+**`ziwei_batch_stats` memory clamp** — the batch worker spawned up to 12
+parallel threads, each loading the engine + lunar tables; on memory-tight
+hosts the kernel oom-killer took the child down (exit 137) and the tool
+masked it as a 120 s timeout. Worker count is now clamped by free memory
+(`freemem()`, ~512 MB per worker) alongside CPU parallelism, and an OOM kill
+surfaces as an explicit `killed by SIGKILL (likely OOM …)` error naming the
+free memory at spawn. New test section H covers the regression. Gold
+`ziwei_chart` output unchanged (byte-identical).
+
+**Version:** both transports **0.3.1**.
 
 ## Changelog — 2026-11-10 (patterns batch: `ziwei_patterns` tool + `leapMonth` param)
 
