@@ -26,9 +26,14 @@ Streamable HTTP) unless noted.
   `http.ts` — stdio behaviour unchanged.
 - **CI** — `.github/workflows/ci.yml`: on every push/PR, Node 22, fetch the
   vendored engine at the pinned commit `906bd93f…` (direct-SHA fetch; the
-  pin is not reachable from any upstream branch tip), `npm install`, then
-  run `tests/run-tests.sh` (A–I) plus `tests/http-tests.sh` against a
-  throwaway daemon on port 9879.
+  pin is not reachable from any upstream branch tip), `npm install`, create
+  the `server-only` no-op stub (the engine's `patterns.ts` imports it; the
+  real package throws outside Next.js RSC and npm never installs it — the
+  production vendor tree carries the same hand-made stub, a clean install
+  without it fails with `Cannot find module 'server-only'`), then run
+  `tests/run-tests.sh` (A–I) plus `tests/http-tests.sh` against a
+  throwaway daemon on port 9879. The stub step is documented in README
+  Install (all languages).
 - **HTTPS documentation** — CONNECTING.md documents TLS termination via
   `tailscale serve` (`tailscale serve --bg 9878` →
   `https://<machine>.<tailnet>.ts.net/mcp`, auto-cert, token still required,

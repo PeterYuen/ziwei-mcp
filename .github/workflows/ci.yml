@@ -45,6 +45,17 @@ jobs:
         run: npm install --no-audit --no-fund
         working-directory: vendor/ziwei-doushu
 
+      - name: Stub the engine's `server-only` import
+        # lib/ziwei/patterns.ts imports 'server-only' (a Next.js RSC marker).
+        # It is absent from a clean npm install, and the real package THROWS
+        # outside a React Server Components context — the production vendor
+        # tree carries a hand-made no-op stub (see README Install). Recreate
+        # it here so tsx resolves it to nothing.
+        run: |
+          mkdir -p vendor/ziwei-doushu/node_modules/server-only
+          printf 'module.exports = {};\n' > vendor/ziwei-doushu/node_modules/server-only/index.js
+          printf '{"name":"server-only","version":"0.0.1","main":"index.js"}\n' > vendor/ziwei-doushu/node_modules/server-only/package.json
+
       - name: Run stdio test suite (A–I)
         run: bash services/ziwei-mcp/tests/run-tests.sh
 

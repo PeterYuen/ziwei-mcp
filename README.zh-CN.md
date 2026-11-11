@@ -52,6 +52,12 @@ HTTP（Phase 2，`http.ts`，LAN／远端客户端，bearer token）。无状态
 ```bash
 git clone https://github.com/Renhuai123/ziwei-doushu vendor/ziwei-doushu
 ( cd vendor/ziwei-doushu && git checkout 906bd93 && npm install )
+# 额外一步：引擎的 patterns.ts 汇入了 'server-only'（Next.js RSC 标记；npm
+# 不会安装它，而且真实套件在 Server Component 之外 require 时会抛出错误）。
+# 建立一个 no-op 存根，让 tsx 将其解析为空：
+mkdir -p vendor/ziwei-doushu/node_modules/server-only
+printf 'module.exports = {};\n' > vendor/ziwei-doushu/node_modules/server-only/index.js
+printf '{"name":"server-only","version":"0.0.1","main":"index.js"}\n' > vendor/ziwei-doushu/node_modules/server-only/package.json
 ```
 
 本服务随后汇入 `vendor/ziwei-doushu/lib/ziwei/*`（algorithm、sihua、
