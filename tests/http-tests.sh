@@ -5,7 +5,7 @@ set -u
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 WS="${WS:-$(cd "$HERE/../.." && pwd)}"
 TOK="$(cat "$HERE/.token")"
-BASE="http://127.0.0.1:9878"
+BASE="${BASE:-http://127.0.0.1:9878}"
 pass=0; fail=0
 ok()  { echo "PASS: $1"; pass=$((pass+1)); }
 bad() { echo "FAIL: $1"; fail=$((fail+1)); }
