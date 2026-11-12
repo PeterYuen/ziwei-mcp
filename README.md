@@ -51,6 +51,12 @@ Requirements:
 ```bash
 git clone https://github.com/Renhuai123/ziwei-doushu vendor/ziwei-doushu
 ( cd vendor/ziwei-doushu && git checkout 906bd93 && npm install )
+# One extra step: the engine's patterns.ts imports 'server-only' (a Next.js
+# RSC marker that npm does not install and that THROWS when required outside
+# a Server Component). Create a no-op stub so tsx resolves it to nothing:
+mkdir -p vendor/ziwei-doushu/node_modules/server-only
+printf 'module.exports = {};\n' > vendor/ziwei-doushu/node_modules/server-only/index.js
+printf '{"name":"server-only","version":"0.0.1","main":"index.js"}\n' > vendor/ziwei-doushu/node_modules/server-only/package.json
 ```
 
 This service then imports `vendor/ziwei-doushu/lib/ziwei/*` (algorithm, sihua,
