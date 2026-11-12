@@ -1,0 +1,83 @@
+name: "Bug report"
+description: "Report wrong output, a crash, or unexpected behavior — please include exact chart inputs."
+title: "[bug]: "
+labels: ["bug"]
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: What happened?
+      description: A clear, short description of the bug (tool name + what came back).
+    validations:
+      required: true
+  - type: textarea
+    id: inputs
+    attributes:
+      label: Exact chart inputs
+      description: |
+        Paste the exact tool call (JSON) that reproduces the issue. Include at minimum:
+        date (year/month/day), time (hour/minute), calendar type (solar or lunar — and if
+        lunar, the isLeap flag), and the leapMonth policy flag (split / next-month /
+        prev-month / origin-month, or "not supplied"). If the bug involves a flow year or
+        layer, include year / yearWindow / flowDate / flowHour exactly as sent.
+      placeholder: |
+        {"name":"ziwei_chart","arguments":{"year":2023,"month":4,"day":10,"hour":12,"minute":0,"gender":"male","leapMonth":"split"}}
+    validations:
+      required: true
+  - type: dropdown
+    id: calendar
+    attributes:
+      label: Calendar type involved
+      options:
+        - Solar (Gregorian) input
+        - Lunar input (with leap flag)
+        - Both / conversion
+        - Not calendar-related
+    validations:
+      required: true
+  - type: dropdown
+    id: leapflag
+    attributes:
+      label: LeapMonth / leap flag involved?
+      options:
+        - "No leap involvement"
+        - "leapMonth: split (default)"
+        - "leapMonth: next-month"
+        - "leapMonth: prev-month"
+        - "leapMonth: origin-month"
+        - "isLeap / leap month in lunar or flow dates"
+        - "Unsure"
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected vs actual
+      description: |
+        What did you expect, and what actually came back? Quote the relevant fields
+        (e.g. fourPillars, 命宮, lunarMonth/isLeapMonth, stems) rather than paraphrasing.
+      placeholder: |
+        Expected: lunarMonth 2 / isLeapMonth true (闰二月)
+        Actual:   lunarMonth 3 / isLeapMonth false
+    validations:
+      required: true
+  - type: textarea
+    id: env
+    attributes:
+      label: Environment
+      description: Transport (stdio / HTTP), version from `tools/list` or `GET /health`, OS, Node version, and the vendored engine commit if known (default 906bd93).
+      value: |
+        transport:
+        version:
+        OS:
+        Node:
+        engine pin:
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Reproduction steps
+      description: Command lines, not prose, if at all possible (e.g. the exact `echo … | tsx index.ts` invocation or curl call).
+    validations:
+      required: false
