@@ -28,7 +28,7 @@ if node -e '
 const fs=require("fs");
 const L=fs.readFileSync(process.argv[1],"utf8").trim().split("\n").map(JSON.parse);
 const init=L.find(x=>x.id===1).result;
-if(init.serverInfo.name!=="ziwei-mcp"||init.serverInfo.version!=="0.3.1")process.exit(1);
+if(init.serverInfo.name!=="ziwei-mcp"||init.serverInfo.version!=="0.3.2")process.exit(1);
 if(init.protocolVersion!=="2025-06-18")process.exit(1);
 if(!init.capabilities.tools)process.exit(1);
 const tl=L.find(x=>x.id===2).result.tools;
