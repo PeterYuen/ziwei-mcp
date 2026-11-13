@@ -1,0 +1,73 @@
+name: "Feature request"
+description: "Propose a new tool, parameter, or output field — please include exact chart inputs so the behavior can be pinned down."
+title: "[feat]: "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What do you want to do that you can't do today?
+      description: The gap, not the solution. "I can't …" beats "add X".
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+      description: Tool/parameter names, expected output shape, defaults, and how it should interact with existing tools (ziwei_chart, ziwei_sihua_layers, …).
+    validations:
+      required: true
+  - type: textarea
+    id: inputs
+    attributes:
+      label: Exact chart inputs used to judge the proposal
+      description: |
+        Concrete example calls that show the proposal working (and, if relevant,
+        the current wrong/missing output). Include for each example: date
+        (year/month/day), time (hour/minute), calendar type (solar or lunar —
+        if lunar, the isLeap flag), and the leapMonth policy flag
+        (split / next-month / prev-month / origin-month, or "not supplied").
+      placeholder: |
+        Example: {"name":"ziwei_sihua_layers","arguments":{"year":2026,"gender":"male","birth":{"year":1986,"month":12,"day":8,"hour":23,"minute":45},"layers":["liuyue"],"lunarMonth":2,"isLeapMonth":true}}
+    validations:
+      required: true
+  - type: dropdown
+    id: calendar
+    attributes:
+      label: Calendar type involved
+      options:
+        - Solar (Gregorian) input
+        - Lunar input (with leap flag)
+        - Both / conversion
+        - Not calendar-related
+    validations:
+      required: true
+  - type: dropdown
+    id: leapflag
+    attributes:
+      label: LeapMonth / leap flag relevant to this feature?
+      options:
+        - "No leap involvement"
+        - "Yes — leapMonth policy affects the output"
+        - "Yes — isLeap / leap months in lunar or flow dates"
+        - "Unsure"
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Other designs, or a workaround you use today (e.g. post-processing ziwei_chart output).
+    validations:
+      required: false
+  - type: textarea
+    id: goldimpact
+    attributes:
+      label: Gold-regression impact
+      description: |
+        Could this change alter the output for the anchor birth (1986-12-08
+        23:45 male lon 114.2)? The gold fixtures (tests/gold/) are the line we
+        do not cross — say honestly whether your proposal touches them.
+      value: "gold impact: yes / no / unsure — because …"
+    validations:
+      required: true

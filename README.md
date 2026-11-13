@@ -51,6 +51,12 @@ Requirements:
 ```bash
 git clone https://github.com/Renhuai123/ziwei-doushu vendor/ziwei-doushu
 ( cd vendor/ziwei-doushu && git checkout 906bd93 && npm install )
+# One extra step: the engine's patterns.ts imports 'server-only' (a Next.js
+# RSC marker that npm does not install and that THROWS when required outside
+# a Server Component). Create a no-op stub so tsx resolves it to nothing:
+mkdir -p vendor/ziwei-doushu/node_modules/server-only
+printf 'module.exports = {};\n' > vendor/ziwei-doushu/node_modules/server-only/index.js
+printf '{"name":"server-only","version":"0.0.1","main":"index.js"}\n' > vendor/ziwei-doushu/node_modules/server-only/package.json
 ```
 
 This service then imports `vendor/ziwei-doushu/lib/ziwei/*` (algorithm, sihua,
@@ -90,7 +96,7 @@ bash services/ziwei-mcp/tests/http-tests.sh   # 38 assertions against the live d
   (next free ≥ 9878) and logs the actual port.
 - **Auth:** `Authorization: Bearer $(cat services/ziwei-mcp/.token)` or `?token=<t>`
   query param (either accepted, constant-time compare). Missing/wrong → **401**.
-- **`GET /health`** — no auth, no chart data: `{"status":"ok","server":"ziwei-mcp","version":"0.3.1"}`.
+- **`GET /health`** — no auth, no chart data: `{"status":"ok","server":"ziwei-mcp","version":"0.3.2"}`.
 - **Transport modes (Streamable HTTP spec):**
   - **JSON response mode** (default): POST a single JSON-RPC message or a batch
     array, get `application/json` back (202 for notification-only posts).
@@ -309,6 +315,27 @@ Canonical dated changelog: **[CHANGES.md](CHANGES.md)** (keep-a-changelog
 format, newest first). The per-release notes below are the detailed narrative
 entries.
 
+## Changelog — 2026-11-13 (v0.3.2: CI + full test coverage + repo hygiene)
+
+**Continuous integration** — `.github/workflows/ci.yml` runs the full test
+suite on every push/PR: this repo checked out at `services/ziwei-mcp`, the
+vendored engine checked out at its pinned commit `906bd93`, then both the
+stdio suite (`run-tests.sh`, sections A–K) and the HTTP suite
+(`http-tests.sh`) against a throwaway daemon.
+
+**Full test coverage** — new sections I–K close the last thin spots:
+`ziwei_patterns` gold fixtures and strict table entries, the full 6-variant
+`ziwei_school_compare` roster with discriminating cases, and `leapMonth`
+policy coverage across every calendar-aware tool. All 10 tools now have
+dedicated coverage.
+
+**Repo hygiene** — `CODE_OF_CONDUCT.md` (Contributor Covenant 2.1),
+`CONTRIBUTING.md` (fork→branch→PR workflow, vendored-engine pin rule, how
+to run tests), `SECURITY.md` (private disclosure policy), and GitHub issue
+templates that force exact chart inputs (date, time, calendar, leapMonth).
+
+**Version:** both transports **0.3.2** (patch bump — zero behavior change).
+
 ## Changelog — 2026-11-11 (v0.3.1: batch-stats OOM hardening)
 
 **`ziwei_batch_stats` memory clamp** — the batch worker spawned up to 12
@@ -320,7 +347,7 @@ surfaces as an explicit `killed by SIGKILL (likely OOM …)` error naming the
 free memory at spawn. New test section H covers the regression. Gold
 `ziwei_chart` output unchanged (byte-identical).
 
-**Version:** both transports **0.3.1**.
+**Version:** both transports **0.3.2**.
 
 ## Changelog — 2026-11-10 (patterns batch: `ziwei_patterns` tool + `leapMonth` param)
 

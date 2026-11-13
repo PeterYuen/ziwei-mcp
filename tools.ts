@@ -63,7 +63,7 @@ import { dirname as dirnameOf, join as joinPath } from 'node:path';
 export const SERVER_NAME = 'ziwei-mcp';
 // Stdio reports 0.1.0 (the Phase-1 test suite asserts it); the HTTP daemon
 // overrides to 0.2.0 via dispatch()'s serverVersion option.
-export const SERVER_VERSION = '0.3.1';
+export const SERVER_VERSION = '0.3.2';
 export const DEFAULT_PROTOCOL = '2025-06-18';
 
 // ────────────────────────────────────────────────────────────────────────────

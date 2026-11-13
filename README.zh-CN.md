@@ -52,6 +52,12 @@ HTTP（Phase 2，`http.ts`，LAN／远端客户端，bearer token）。无状态
 ```bash
 git clone https://github.com/Renhuai123/ziwei-doushu vendor/ziwei-doushu
 ( cd vendor/ziwei-doushu && git checkout 906bd93 && npm install )
+# 额外一步：引擎的 patterns.ts 汇入了 'server-only'（Next.js RSC 标记；npm
+# 不会安装它，而且真实套件在 Server Component 之外 require 时会抛出错误）。
+# 建立一个 no-op 存根，让 tsx 将其解析为空：
+mkdir -p vendor/ziwei-doushu/node_modules/server-only
+printf 'module.exports = {};\n' > vendor/ziwei-doushu/node_modules/server-only/index.js
+printf '{"name":"server-only","version":"0.0.1","main":"index.js"}\n' > vendor/ziwei-doushu/node_modules/server-only/package.json
 ```
 
 本服务随后汇入 `vendor/ziwei-doushu/lib/ziwei/*`（algorithm、sihua、
@@ -90,7 +96,7 @@ bash services/ziwei-mcp/tests/http-tests.sh   # 对线上 daemon 的 38 项断�
   （取 ≥ 9878 的下一个空埠）并在 log 中记录实际 port。
 - **Auth：** `Authorization: Bearer *** services/ziwei-mcp/.token)` 或 `?token=***<t>`
   query param（两者皆可，常数时间比对）。缺少／错误 → **401**。
-- **`GET /health`** — 无需 auth、不含命盘资料：`{"status":"ok","server":"ziwei-mcp","version":"0.3.1"}`。
+- **`GET /health`** — 无需 auth、不含命盘资料：`{"status":"ok","server":"ziwei-mcp","version":"0.3.2"}`。
 - **Transport 模式（Streamable HTTP 规范）：**
   - **JSON 回应模式**（预设）：POST 单一 JSON-RPC 讯息或批次阵列，
     取回 `application/json`（仅通知的 POST 回 202）。
@@ -299,6 +305,25 @@ bash services/ziwei-mcp/tests/http-tests.sh    # HTTP：auth、protocol、batch�
 正式日期式变更记录见 **[CHANGES.md](CHANGES.md)**（Keep a Changelog 格式，最新在上）。
 以下逐段为各版本的详细叙述性记录。
 
+## 变更记录 —— 2026-11-13（v0.3.2：CI + 完整测试覆盖 + 仓库治理文件）
+
+**持续集成** —— `.github/workflows/ci.yml` 在每次 push/PR 运行完整测试：
+本仓库以 `services/ziwei-mcp` 布局检出，vendored 引擎按固定提交
+`906bd93` 检出，随后运行 stdio 测试（`run-tests.sh`，A–K 节）与 HTTP
+测试（`http-tests.sh`，对一次性 daemon）。
+
+**完整测试覆盖** —— 新增 I–K 节补齐最后的薄弱点：`ziwei_patterns` 的
+gold 基准与严格格局表、`ziwei_school_compare` 全部 6 种变体及区分用例，
+以及所有日历感知工具的 `leapMonth` 策略覆盖。至此 10 个工具全部有
+专属覆盖。
+
+**仓库治理** —— `CODE_OF_CONDUCT.md`（Contributor Covenant 2.1）、
+`CONTRIBUTING.md`（fork→分支→PR 流程、vendored 引擎固定规则、测试
+运行方法）、`SECURITY.md`（私下披露政策）以及强制填写精确命盘输入
+（日期、时间、历法、闰月）的 GitHub issue 模板。
+
+**版本：** 两个 transport 均为 **0.3.2**（patch 版本号提升 —— 行为零变化）。
+
 ## 变更记录 —— 2026-11-11（v0.3.1：batch-stats OOM 加固）
 
 **`ziwei_batch_stats` 内存限幅** —— 批量工作进程原先最多并行 12 个线程，
@@ -308,7 +333,7 @@ bash services/ziwei-mcp/tests/http-tests.sh    # HTTP：auth、protocol、batch�
 明确的 `killed by SIGKILL (likely OOM …)` 错误呈现并载明启动时可用内存。
 新增测试章节 H 覆盖此回归。黄金 `ziwei_chart` 输出不变（字节相同）。
 
-**版本：** 两个 transport 均为 **0.3.1**。
+**版本：** 两个 transport 均为 **0.3.2**。
 
 ## 变更记录 —— 2026-11-10（格局批次：`ziwei_patterns` 工具 ＋ `leapMonth` 参数）
 

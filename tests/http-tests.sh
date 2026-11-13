@@ -5,7 +5,7 @@ set -u
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 WS="${WS:-$(cd "$HERE/../.." && pwd)}"
 TOK="$(cat "$HERE/.token")"
-BASE="http://127.0.0.1:9878"
+BASE="${BASE:-http://127.0.0.1:9878}"
 pass=0; fail=0
 ok()  { echo "PASS: $1"; pass=$((pass+1)); }
 bad() { echo "FAIL: $1"; fail=$((fail+1)); }
@@ -17,7 +17,7 @@ EOF
 
 # 1. health without auth
 [ "$(code "$BASE/health")" = 200 ] && ok "health 200 no-auth" || bad "health"
-curl -s "$BASE/health" | grep -q '"status":"ok"' && curl -s "$BASE/health" | grep -q '"version":"0.3.1"' && ok "health body" || bad "health body"
+curl -s "$BASE/health" | grep -q '"status":"ok"' && curl -s "$BASE/health" | grep -q '"version":"0.3.2"' && ok "health body" || bad "health body"
 
 # 2. auth rejection
 [ "$(code -X POST "$BASE/mcp" -H 'Content-Type: application/json' -d '{}')" = 401 ] && ok "no-token 401" || bad "no-token 401"
@@ -25,7 +25,7 @@ curl -s "$BASE/health" | grep -q '"status":"ok"' && curl -s "$BASE/health" | gre
 
 # 3. protocol over HTTP
 R=$(post "$BASE/mcp" '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"t","version":"0"}}}')
-echo "$R" | grep -q '"serverInfo"' && echo "$R" | grep -q '"version":"0.3.1"' && ok "initialize" || bad "initialize"
+echo "$R" | grep -q '"serverInfo"' && echo "$R" | grep -q '"version":"0.3.2"' && ok "initialize" || bad "initialize"
 R=$(post "$BASE/mcp" '{"jsonrpc":"2.0","id":2,"method":"tools/list"}')
 echo "$R" | grep -q ziwei_chart && echo "$R" | grep -q ziwei_sihua_layers && ok "tools/list" || bad "tools/list"
 [ "$(code -X POST "$BASE/mcp" -H "Authorization: Bearer $TOK" -H 'Content-Type: application/json' -d '[{"jsonrpc":"2.0","id":1,"method":"ping"},{"jsonrpc":"2.0","id":2,"method":"ping"}]')" = 200 ] && ok "batch 200" || bad "batch"

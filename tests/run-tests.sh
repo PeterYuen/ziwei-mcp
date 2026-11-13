@@ -28,7 +28,7 @@ if node -e '
 const fs=require("fs");
 const L=fs.readFileSync(process.argv[1],"utf8").trim().split("\n").map(JSON.parse);
 const init=L.find(x=>x.id===1).result;
-if(init.serverInfo.name!=="ziwei-mcp"||init.serverInfo.version!=="0.3.1")process.exit(1);
+if(init.serverInfo.name!=="ziwei-mcp"||init.serverInfo.version!=="0.3.2")process.exit(1);
 if(init.protocolVersion!=="2025-06-18")process.exit(1);
 if(!init.capabilities.tools)process.exit(1);
 const tl=L.find(x=>x.id===2).result.tools;
@@ -492,4 +492,169 @@ process.stdout.write(String(d.workers));
   ok "H batch-stats memory resilience: 4380 charts, sum==chartsComputed, workers=$(cat "$TMP/h.workers") (≤ free-mem bound)"; else bad "H batch-stats memory resilience"; fi
 
 echo "──── A-H: $pass passed, $fail failed"
+
+# ── I: ziwei_patterns coverage (2026-11-12 full-coverage pass) ────────────────
+# Thin tool before this pass: only listed in EXPECTED (A) and called once via
+# selftest fixtures. Here: gold-chart general detectors, the two strict 《全书》
+# 卷一 table fixtures (定贵局第11条 七杀朝斗 / 第9条 坐贵向贵), the 空宫借星
+# edge (empty 命宫 → borrowedFrom), validation errors, and leapMonth echo.
+I="$TMP/i.jsonl"
+printf '%s\n' \
+ '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18"}}' \
+ '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"ziwei_patterns","arguments":{"year":1986,"month":12,"day":8,"hour":23,"minute":45,"gender":"male","longitude":114.2}}}' \
+ '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"ziwei_patterns","arguments":{"year":1978,"month":7,"day":1,"hour":11,"minute":0,"gender":"male"}}}' \
+ '{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"ziwei_patterns","arguments":{"year":1990,"month":5,"day":20,"hour":8,"minute":0,"gender":"female"}}}' \
+ '{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"ziwei_patterns","arguments":{}}}' \
+ '{"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"ziwei_patterns","arguments":{"year":1986,"month":12,"day":8,"hour":23,"minute":45,"gender":"male","leapMonth":"bogus"}}}' \
+ '{"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"name":"ziwei_patterns","arguments":{"year":2023,"month":4,"day":10,"hour":12,"minute":0,"gender":"male","leapMonth":"prev-month"}}}' \
+ | "$TSX" "$SRV" > "$TMP/i.out" 2>/dev/null
+if node -e '
+const fs=require("fs");
+const L=fs.readFileSync(process.argv[1],"utf8").trim().split("\n").map(JSON.parse);
+const g=id=>L.find(x=>x.id===id);
+const R=id=>{if(!g(id).result||g(id).result.isError)throw new Error("id "+id+" isError: "+(g(id).result?g(id).result.content[0].text.slice(0,150):"no result"));return JSON.parse(g(id).result.content[0].text)};
+const eq=(cond,msg)=>{if(!cond){console.error(msg);process.exit(1)}};
+// gold birth: general detectors fire, zero strict 卷一 entries (documented
+// anchor — the gold 命宮 is 天同太阴 in 子; none of the 49 strict entries match).
+const r2=R(2);
+eq(r2.counts.total>=1&&r2.counts.strict===0,"gold patterns counts wrong: "+JSON.stringify(r2.counts));
+eq(r2.patterns.every(p=>p.name&&p.level&&p.description&&Array.isArray(p.palaces)&&typeof p.strict==="boolean"),"pattern entries malformed");
+eq(r2.patterns.some(p=>p.name==="机月同梁"),"gold 机月同梁 missing");
+eq(r2.patterns.some(p=>p.name==="天同化禄入命"),"gold 天同化禄入命 missing");
+eq(r2.mingGong.branch==="子"&&r2.mingGong.mainStars.includes("天同"),"gold mingGong wrong");
+eq(!("borrowedFrom" in r2.mingGong),"non-empty mingGong must not carry borrowedFrom");
+eq(r2.meta.leapMonth==="split (engine default)","default leapMonth echo wrong: "+r2.meta.leapMonth);
+// fixture A: strict 定贵局第11条 七杀朝斗 (source tagged 卷一), plus loose bonus detectors
+eq(g(3).result.isError!==true,"fixture A isError");
+const r3=R(3);
+eq(r3.counts.strict>=1,"fixture A no strict entries");
+const s3=r3.patterns.find(p=>p.name==="七杀朝斗");
+eq(s3&&s3.strict===true&&/·卷一·定贵局》第11条/.test(s3.source||""),"fixture A 七杀朝斗 strict entry wrong: "+JSON.stringify(s3));
+eq(/原书第11条/.test(s3.description),"fixture A strict description lacks 原书注文");
+eq(r3.patterns.some(p=>p.name==="杀破狼"&&p.strict===false),"fixture A loose 杀破狼 bonus missing");
+eq(r3.mingGong.mainStars.includes("七杀"),"fixture A mingGong stars wrong");
+// fixture B: 空宫借星 — empty 命宫 in 丑 borrows 太阳太阴 from 迁移
+eq(g(4).result.isError!==true,"fixture B isError");
+const r4=R(4);
+eq(r4.mingGong.mainStars.length===0&&r4.mingGong.nature==="空宫","fixture B mingGong not empty: "+JSON.stringify(r4.mingGong));
+eq(r4.mingGong.borrowedFrom&&r4.mingGong.borrowedFrom.palace==="迁移"&&r4.mingGong.borrowedFrom.mainStars.includes("太阳")&&r4.mingGong.borrowedFrom.mainStars.includes("太阴"),"fixture B borrowedFrom wrong: "+JSON.stringify(r4.mingGong.borrowedFrom));
+eq(r4.patterns.some(p=>p.name==="坐贵向贵"&&p.strict===true&&/定贵局》第9条/.test(p.source||"")),"fixture B 坐贵向贵 strict entry missing");
+// validation: missing args + bad leapMonth enum
+if(!g(5).result||g(5).result.isError!==true){console.error("patterns {} not isError");process.exit(1)}
+if(!g(6).result||g(6).result.isError!==true||!/leapMonth must be one of/.test(g(6).result.content[0].text)){console.error("patterns bad leapMonth not isError-with-enum");process.exit(1)}
+// leapMonth policy honored through the patterns path (2023 leap year, prev-month
+// shifts 命宮 to 天府/木三局) and echoed in meta + rawInput.
+const r7=R(7);
+eq(r7.meta.leapMonth==="prev-month"&&r7.meta.rawInput.leapMonth==="prev-month","patterns leapMonth echo wrong");
+eq(r7.mingGong.branch==="酉"&&r7.mingGong.mainStars.includes("天府"),"patterns leapMonth=prev-month chart not shifted: "+JSON.stringify(r7.mingGong));
+' "$TMP/i.out"; then ok "I patterns: gold detectors + strict 定贵局 fixtures + 空宫借星 + validation + leapMonth"; else bad "I patterns"; fi
+
+# ── J: ziwei_school_compare coverage (2026-11-12 full-coverage pass) ──────────
+# Thin tool before this pass: one gold-birth call in E. Here: all 6 variants
+# present, zero-diff baselines, and the discriminating cases — late-zi birth
+# separates lateZishi variants; leap-year birth separates leapMonth policies;
+# non-leap birth collapses every leapMonth variant to zero diffs.
+J="$TMP/j.jsonl"
+printf '%s\n' \
+ '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18"}}' \
+ '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"ziwei_school_compare","arguments":{"year":1986,"month":12,"day":8,"hour":23,"minute":45,"gender":"male","longitude":114.2}}}' \
+ '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"ziwei_school_compare","arguments":{"year":2023,"month":4,"day":10,"hour":12,"minute":0,"gender":"male"}}}' \
+ '{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"ziwei_school_compare","arguments":{"year":1986,"month":12,"day":8,"hour":12,"minute":0,"gender":"male"}}}' \
+ '{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"ziwei_school_compare","arguments":{"year":1986,"month":13,"day":1,"hour":12,"minute":0,"gender":"male"}}}' \
+ | "$TSX" "$SRV" > "$TMP/j.out" 2>/dev/null
+if node -e '
+const fs=require("fs");
+const L=fs.readFileSync(process.argv[1],"utf8").trim().split("\n").map(JSON.parse);
+const g=id=>L.find(x=>x.id===id);
+const R=id=>{if(!g(id).result||g(id).result.isError)throw new Error("id "+id+" isError: "+(g(id).result?g(id).result.content[0].text.slice(0,150):"no result"));return JSON.parse(g(id).result.content[0].text)};
+const eq=(cond,msg)=>{if(!cond){console.error(msg);process.exit(1)}};
+const VARIANTS=["lateZishi=next-day (default)","lateZishi=current-day (倪师派)","leapMonth=split (default)","leapMonth=next-month (倪师派)","leapMonth=prev-month","leapMonth=origin-month"];
+const r2=R(2);
+eq(JSON.stringify(r2.meta.comparedVariants)===JSON.stringify(VARIANTS),"variant roster wrong: "+JSON.stringify(r2.meta.comparedVariants));
+eq(r2.variants[VARIANTS[0]].diffFromDefault.length===0,"default variant not zero-diff");
+eq(r2.variants["leapMonth=split (default)"].diffFromDefault.length===0,"split variant not zero-diff");
+// gold is a late-zi birth: current-day must differ (incl. effectiveDate),
+// every leapMonth policy must NOT (no leap month in the chart window).
+eq(r2.variants["lateZishi=current-day (倪师派)"].diffFromDefault.length>0,"late-zi birth: current-day zero-diff");
+eq(r2.variants["lateZishi=current-day (倪师派)"].diffFromDefault.some(d=>d.startsWith("effectiveDate")),"current-day diff lacks effectiveDate");
+for(const k of ["leapMonth=next-month (倪师派)","leapMonth=prev-month","leapMonth=origin-month"])eq(r2.variants[k].diffFromDefault.length===0,"gold leapMonth variant "+k+" differs unexpectedly");
+// leap-year birth (2023-04-10, inside 闰二月): split/next-month agree with
+// baseline; prev-month/origin-month shift the whole chart (命宮 + 五行局).
+const r3=R(3);
+eq(r3.variants["lateZishi=current-day (倪师派)"].diffFromDefault.length===0,"2023 birth: current-day differs unexpectedly (not late-zi)");
+eq(r3.variants["leapMonth=next-month (倪师派)"].diffFromDefault.length===0,"2023 next-month differs from split unexpectedly");
+for(const k of ["leapMonth=prev-month","leapMonth=origin-month"]){
+  const d=r3.variants[k].diffFromDefault;
+  eq(d.length>0,"2023 "+k+" zero-diff (leap policy not honored)");
+  eq(d.some(x=>x.startsWith("命宮"))&&d.some(x=>x.startsWith("五行局")),"2023 "+k+" diff missing 命宮/五行局: "+JSON.stringify(d.slice(0,3)));
+}
+eq(r3.variants["leapMonth=prev-month"].digest.wuxingJu==="木三局","2023 prev-month wuxingJu not 木三局: "+r3.variants["leapMonth=prev-month"].digest.wuxingJu);
+// digest shape: 12 palaces, sorted majors, fourPillars joined
+const dg=r3.variants[VARIANTS[0]].digest;
+eq(dg.palaces.length===12&&dg.fourPillars.includes("/")&&dg.palaces.every(p=>p.name&&p.branch&&Array.isArray(p.majors)),"digest shape wrong");
+// non-leap birth: ALL leapMonth variants collapse to zero diffs
+const r4=R(4);
+for(const k of ["leapMonth=next-month (倪师派)","leapMonth=prev-month","leapMonth=origin-month"])eq(r4.variants[k].diffFromDefault.length===0,"non-leap birth "+k+" differs unexpectedly");
+// validation: month 13 -> isError
+if(!g(5).result||g(5).result.isError!==true){console.error("school_compare month 13 not isError");process.exit(1)}
+' "$TMP/j.out"; then ok "J school-compare: 6 variants, late-zi/leap-year/non-leap discrimination, digest shape, validation"; else bad "J school-compare"; fi
+
+# ── K: leapMonth parameter coverage across calendar-aware tools (2026-11-12) ──
+# The leapMonth (闰月) policy is accepted by ziwei_chart/ziwei_patterns (and
+# compared by ziwei_school_compare); ziwei_from_city documents it as ignored.
+# Anchor: 2023-04-10 12:00 male — inside 2023 闰二月, so split/next-month
+# resolve to 三月 (天机天梁, 水二局) while prev-month/origin-month resolve to
+# 二月 (天府, 木三局). Default must equal split. solar_lunar exercises the
+# leap flag both directions; from_city must echo leapMonth in ignoredKeys.
+K="$TMP/k.jsonl"
+printf '%s\n' \
+ '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18"}}' \
+ '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"ziwei_chart","arguments":{"year":2023,"month":4,"day":10,"hour":12,"minute":0,"gender":"male","leapMonth":"split"}}}' \
+ '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"ziwei_chart","arguments":{"year":2023,"month":4,"day":10,"hour":12,"minute":0,"gender":"male","leapMonth":"next-month"}}}' \
+ '{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"ziwei_chart","arguments":{"year":2023,"month":4,"day":10,"hour":12,"minute":0,"gender":"male","leapMonth":"prev-month"}}}' \
+ '{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"ziwei_chart","arguments":{"year":2023,"month":4,"day":10,"hour":12,"minute":0,"gender":"male","leapMonth":"origin-month"}}}' \
+ '{"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"ziwei_chart","arguments":{"year":2023,"month":4,"day":10,"hour":12,"minute":0,"gender":"male"}}}' \
+ '{"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"name":"ziwei_chart","arguments":{"year":2023,"month":4,"day":10,"hour":12,"minute":0,"gender":"male","leapMonth":"bogus"}}}' \
+ '{"jsonrpc":"2.0","id":8,"method":"tools/call","params":{"name":"ziwei_from_city","arguments":{"year":2023,"month":4,"day":10,"hour":12,"minute":0,"gender":"male","city":"Hong Kong","leapMonth":"prev-month"}}}' \
+ '{"jsonrpc":"2.0","id":9,"method":"tools/call","params":{"name":"ziwei_solar_lunar","arguments":{"lunar":{"year":2023,"month":2,"isLeap":true,"day":15}}}}' \
+ '{"jsonrpc":"2.0","id":10,"method":"tools/call","params":{"name":"ziwei_solar_lunar","arguments":{"solar":{"year":2023,"month":4,"day":5}}}}' \
+ '{"jsonrpc":"2.0","id":11,"method":"tools/call","params":{"name":"ziwei_solar_lunar","arguments":{"lunar":{"year":2023,"month":2,"day":15}}}}' \
+ '{"jsonrpc":"2.0","id":12,"method":"tools/call","params":{"name":"ziwei_solar_lunar","arguments":{"lunar":{"year":2023,"month":2,"isLeap":true,"day":1}}}}' \
+ | "$TSX" "$SRV" > "$TMP/k.out" 2>/dev/null
+if node -e '
+const fs=require("fs");
+const L=fs.readFileSync(process.argv[1],"utf8").trim().split("\n").map(JSON.parse);
+const g=id=>L.find(x=>x.id===id);
+const R=id=>{if(!g(id).result||g(id).result.isError)throw new Error("id "+id+" isError: "+(g(id).result?g(id).result.content[0].text.slice(0,150):"no result"));return JSON.parse(g(id).result.content[0].text)};
+const eq=(cond,msg)=>{if(!cond){console.error(msg);process.exit(1)}};
+const dig=id=>{const r=R(id);const mg=r.chart.palaces.find(p=>p.isMingGong);return [r.chart.lunarInfo.lunarMonth,mg.stars.filter(s=>s.type==="major").map(s=>s.name).sort().join("+"),r.chart.wuxingJuName].join("|")};
+// split/next-month agree: 三月 天机天梁 水二局; prev-month/origin-month agree:
+// 二月 天府 木三局. Default == split (documented engine default).
+eq(dig(2)==="3|天机+天梁|水二局","split wrong: "+dig(2));
+eq(dig(3)===dig(2),"next-month != split");
+eq(dig(4)==="2|天府|木三局","prev-month wrong: "+dig(4));
+eq(dig(5)===dig(4),"origin-month != prev-month");
+eq(dig(6)===dig(2),"default != split");
+eq(R(2).meta.leapMonth===undefined||/split/.test(String(R(2).meta.leapMonth)),"default leapMonth echo wrong");
+eq(R(4).meta.rawInput.leapMonth==="prev-month","rawInput leapMonth echo wrong");
+// invalid enum rejected
+if(!g(7).result||g(7).result.isError!==true||!/leapMonth must be one of/.test(g(7).result.content[0].text)){console.error("chart bad leapMonth not isError");process.exit(1)}
+// from_city: accepted but ignored (schema has no leapMonth) — echoed via
+// ignoredKeys, chart follows the split default (三月 天机天梁).
+const r8=R(8);
+eq(Array.isArray(r8.meta.ignoredKeys)&&r8.meta.ignoredKeys.includes("leapMonth"),"from_city leapMonth not in ignoredKeys: "+JSON.stringify(r8.meta.ignoredKeys));
+const mg8=r8.chart.palaces.find(p=>p.isMingGong);
+eq(r8.chart.lunarInfo.lunarMonth===3&&mg8.stars.filter(s=>s.type==="major").map(s=>s.name).sort().join("+")==="天机+天梁","from_city leapMonth changed the chart");
+// solar_lunar leap-flag round-trips: 闰二月十五 <-> 2023-04-05; non-leap 二月
+// 十五 lands a month earlier (2023-03-06); 闰二月初一 = 2023-03-22.
+const r9=R(9), r10=R(10);
+eq(r9.lunar.isLeap===true&&r9.solar.year===2023&&r9.solar.month===4&&r9.solar.day===5,"leap m2 m15 -> solar wrong: "+JSON.stringify(r9.solar));
+eq(r10.lunar.month===2&&r10.lunar.isLeap===true&&r10.lunar.day===15,"solar->leap m2 flag wrong: "+JSON.stringify(r10.lunar));
+const r11=R(11);
+eq(r11.lunar.isLeap===false&&r11.solar.month===3&&r11.solar.day===6,"non-leap m2 15 -> 2023-03-06 wrong: "+JSON.stringify(r11.solar));
+const r12=R(12);
+eq(r12.lunar.isLeap===true&&r12.solar.month===3&&r12.solar.day===22,"leap m2 d1 -> 2023-03-22 wrong: "+JSON.stringify(r12.solar));
+' "$TMP/k.out"; then ok "K leapMonth: chart policy table (split/next/prev/origin/default), enum reject, from_city ignoredKeys, solar_lunar leap round-trips"; else bad "K leapMonth"; fi
+
+echo "──── A-K: $pass passed, $fail failed"
 [ "$fail" -eq 0 ]
