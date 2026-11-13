@@ -315,6 +315,27 @@ Canonical dated changelog: **[CHANGES.md](CHANGES.md)** (keep-a-changelog
 format, newest first). The per-release notes below are the detailed narrative
 entries.
 
+## Changelog — 2026-11-13 (v0.3.2: CI + full test coverage + repo hygiene)
+
+**Continuous integration** — `.github/workflows/ci.yml` runs the full test
+suite on every push/PR: this repo checked out at `services/ziwei-mcp`, the
+vendored engine checked out at its pinned commit `906bd93`, then both the
+stdio suite (`run-tests.sh`, sections A–K) and the HTTP suite
+(`http-tests.sh`) against a throwaway daemon.
+
+**Full test coverage** — new sections I–K close the last thin spots:
+`ziwei_patterns` gold fixtures and strict table entries, the full 6-variant
+`ziwei_school_compare` roster with discriminating cases, and `leapMonth`
+policy coverage across every calendar-aware tool. All 10 tools now have
+dedicated coverage.
+
+**Repo hygiene** — `CODE_OF_CONDUCT.md` (Contributor Covenant 2.1),
+`CONTRIBUTING.md` (fork→branch→PR workflow, vendored-engine pin rule, how
+to run tests), `SECURITY.md` (private disclosure policy), and GitHub issue
+templates that force exact chart inputs (date, time, calendar, leapMonth).
+
+**Version:** both transports **0.3.2** (patch bump — zero behavior change).
+
 ## Changelog — 2026-11-11 (v0.3.1: batch-stats OOM hardening)
 
 **`ziwei_batch_stats` memory clamp** — the batch worker spawned up to 12

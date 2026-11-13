@@ -305,6 +305,25 @@ bash services/ziwei-mcp/tests/http-tests.sh    # HTTP：auth、protocol、batch�
 正式日期式变更记录见 **[CHANGES.md](CHANGES.md)**（Keep a Changelog 格式，最新在上）。
 以下逐段为各版本的详细叙述性记录。
 
+## 变更记录 —— 2026-11-13（v0.3.2：CI + 完整测试覆盖 + 仓库治理文件）
+
+**持续集成** —— `.github/workflows/ci.yml` 在每次 push/PR 运行完整测试：
+本仓库以 `services/ziwei-mcp` 布局检出，vendored 引擎按固定提交
+`906bd93` 检出，随后运行 stdio 测试（`run-tests.sh`，A–K 节）与 HTTP
+测试（`http-tests.sh`，对一次性 daemon）。
+
+**完整测试覆盖** —— 新增 I–K 节补齐最后的薄弱点：`ziwei_patterns` 的
+gold 基准与严格格局表、`ziwei_school_compare` 全部 6 种变体及区分用例，
+以及所有日历感知工具的 `leapMonth` 策略覆盖。至此 10 个工具全部有
+专属覆盖。
+
+**仓库治理** —— `CODE_OF_CONDUCT.md`（Contributor Covenant 2.1）、
+`CONTRIBUTING.md`（fork→分支→PR 流程、vendored 引擎固定规则、测试
+运行方法）、`SECURITY.md`（私下披露政策）以及强制填写精确命盘输入
+（日期、时间、历法、闰月）的 GitHub issue 模板。
+
+**版本：** 两个 transport 均为 **0.3.2**（patch 版本号提升 —— 行为零变化）。
+
 ## 变更记录 —— 2026-11-11（v0.3.1：batch-stats OOM 加固）
 
 **`ziwei_batch_stats` 内存限幅** —— 批量工作进程原先最多并行 12 个线程，
