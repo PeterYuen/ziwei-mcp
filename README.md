@@ -96,7 +96,7 @@ bash services/ziwei-mcp/tests/http-tests.sh   # 38 assertions against the live d
   (next free ≥ 9878) and logs the actual port.
 - **Auth:** `Authorization: Bearer $(cat services/ziwei-mcp/.token)` or `?token=<t>`
   query param (either accepted, constant-time compare). Missing/wrong → **401**.
-- **`GET /health`** — no auth, no chart data: `{"status":"ok","server":"ziwei-mcp","version":"0.3.1"}`.
+- **`GET /health`** — no auth, no chart data: `{"status":"ok","server":"ziwei-mcp","version":"0.3.2"}`.
 - **Transport modes (Streamable HTTP spec):**
   - **JSON response mode** (default): POST a single JSON-RPC message or a batch
     array, get `application/json` back (202 for notification-only posts).
@@ -326,7 +326,7 @@ surfaces as an explicit `killed by SIGKILL (likely OOM …)` error naming the
 free memory at spawn. New test section H covers the regression. Gold
 `ziwei_chart` output unchanged (byte-identical).
 
-**Version:** both transports **0.3.1**.
+**Version:** both transports **0.3.2**.
 
 ## Changelog — 2026-11-10 (patterns batch: `ziwei_patterns` tool + `leapMonth` param)
 

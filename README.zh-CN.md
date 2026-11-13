@@ -96,7 +96,7 @@ bash services/ziwei-mcp/tests/http-tests.sh   # 对线上 daemon 的 38 项断�
   （取 ≥ 9878 的下一个空埠）并在 log 中记录实际 port。
 - **Auth：** `Authorization: Bearer *** services/ziwei-mcp/.token)` 或 `?token=***<t>`
   query param（两者皆可，常数时间比对）。缺少／错误 → **401**。
-- **`GET /health`** — 无需 auth、不含命盘资料：`{"status":"ok","server":"ziwei-mcp","version":"0.3.1"}`。
+- **`GET /health`** — 无需 auth、不含命盘资料：`{"status":"ok","server":"ziwei-mcp","version":"0.3.2"}`。
 - **Transport 模式（Streamable HTTP 规范）：**
   - **JSON 回应模式**（预设）：POST 单一 JSON-RPC 讯息或批次阵列，
     取回 `application/json`（仅通知的 POST 回 202）。
@@ -314,7 +314,7 @@ bash services/ziwei-mcp/tests/http-tests.sh    # HTTP：auth、protocol、batch�
 明确的 `killed by SIGKILL (likely OOM …)` 错误呈现并载明启动时可用内存。
 新增测试章节 H 覆盖此回归。黄金 `ziwei_chart` 输出不变（字节相同）。
 
-**版本：** 两个 transport 均为 **0.3.1**。
+**版本：** 两个 transport 均为 **0.3.2**。
 
 ## 变更记录 —— 2026-11-10（格局批次：`ziwei_patterns` 工具 ＋ `leapMonth` 参数）
 

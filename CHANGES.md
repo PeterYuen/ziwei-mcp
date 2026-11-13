@@ -5,13 +5,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); dates and
 versions newest first. Version numbers apply to both transports (stdio and
 Streamable HTTP) unless noted.
 
-## 2026-11-12 — unreleased (CI + full test coverage + repo hygiene)
+## 2026-11-13 — v0.3.2 (CI + full test coverage + repo hygiene)
 
 ### Context — PR #7 closed without merge
 `feat/hardening-v0.4.0` (PR #7: per-token rate limiting, batch concurrency
 cap, HTTPS-via-tailscale docs, version bump to 0.4.0) was verified green in
 CI but is **closed without merging** — the v0.4.0 hardening is deferred, so
-this branch stays on **version 0.3.1** and takes only two pieces from it:
+this branch stays at **version 0.3.2** (patch bump — CI/coverage/hygiene only,
+zero behavior change) and takes only two pieces from it:
 the CI workflow (as it ran green in run 43050795148) and the `server-only`
 stub fix (commit `1bbe77f`). No rate limiter, no concurrency cap, no version
 bump, no HTTPS docs.
@@ -53,6 +54,11 @@ bump, no HTTPS docs.
   templates force exact chart inputs: date, time, calendar type, leapMonth
   flag, expected vs actual.
 
+### Changed
+- **Version bump** 0.3.1 → **0.3.2** (both transports; `tools/list` and
+  `GET /health` report the new version). Patch bump: CI, test coverage, and
+  repo hygiene only — no behavior, schema, or output changes.
+
 ### Fixed
 - `tests/http-tests.sh` now honors `BASE` from the environment (default
   `http://127.0.0.1:9878` unchanged) so CI can point it at the throwaway
@@ -78,8 +84,8 @@ bump, no HTTPS docs.
 `run-tests.sh` (A–K): 13/13 PASS locally 2026-11-12 — gold `ziwei_chart`
 byte-identical to `tests/gold/chart-1986.json`, default render byte-identical
 to `tests/gold/render-default-1986.svg` (sections B/F gates). HTTP suite
-against a throwaway daemon: 38/38 PASS, 0 FAIL. Version strings unchanged
-(0.3.1 in `tools/list` / `/health`).
+against a throwaway daemon: 38/38 PASS, 0 FAIL. Version strings were unchanged at 0.3.1 during this pass;
+the 0.3.2 bump below followed after the coverage pass.
 
 ## 2026-11-11 — v0.3.1
 
